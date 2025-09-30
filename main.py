@@ -88,12 +88,9 @@ def extract_contour(mask, midline_x):
 
 
 def save_contour_and_image(img, contour, base_name):
-    cv2.polylines(img, [contour.reshape(-1, 1, 2)], isClosed=False, color=(255, 255, 255), thickness=2)
-    contour_img = os.path.join(OUTPUT_DIR, f"{base_name}_face_contour_final_clean_no_magic.jpg")
-    contour_points = os.path.join(OUTPUT_DIR, f"{base_name}_face_contour_final_clean_no_magic_points.txt")
-    cv2.imwrite(contour_img, img)
-    np.savetxt(contour_points, contour, fmt="%d")
-    print(f"✅ Saved: {contour_img} & {contour_points}")
+    # Intentionally do not write intermediate contour artifacts to disk
+    # Keep drawing in-memory only for downstream use if needed
+    pass
 
 
 def write_in2d(contour, H, W, subsample_n, in2d_file):
@@ -117,7 +114,7 @@ def write_in2d(contour, H, W, subsample_n, in2d_file):
 
         f.write("\nmaterials\n1 face -maxh=1000\n")
 
-    print(f"✅ Written .in2d: {in2d_file}")
+    print(f"✅ Prepared geometry for meshing")
 
 
 def run_netgen(in2d_file, mesh_file):
@@ -140,9 +137,9 @@ def run_netgen(in2d_file, mesh_file):
         # Generate mesh
         mesh = geo.GenerateMesh(mp=mp)
         
-        # Save mesh
+        # Save mesh (temporary). Caller may delete after reading
         mesh.Save(mesh_file)
-        print(f"✅ Netgen finished. Mesh saved as {mesh_file}")
+        print(f"✅ Netgen meshing finished")
         
     except Exception as e:
         print(f"❌ Netgen Python API failed: {e}")
@@ -156,7 +153,7 @@ def run_netgen(in2d_file, mesh_file):
             geo.Load(in2d_file)
             mesh = geo.GenerateMesh()
             mesh.Save(mesh_file)
-            print(f"✅ NGSolve mesh generation finished. Mesh saved as {mesh_file}")
+            print(f"✅ NGSolve mesh generation finished")
             
         except Exception as e2:
             print(f"❌ Alternative approach also failed: {e2}")
@@ -317,8 +314,8 @@ def read_dat_with_rgb(dat_path):
     colors = np.array(colors)
     return fine_points, colors, coarse_zones
 
-def generate_solution(points, solution_path):
-    """Generate a synthetic PDE solution for the mesh points"""
+def generate_solution(points):
+    """Generate a synthetic PDE solution for the mesh points (in-memory only)."""
     x_max = np.max(points[:,0])
     y_max = np.max(points[:,1])
     
@@ -329,12 +326,7 @@ def generate_solution(points, solution_path):
     solution -= solution.min()
     solution /= solution.max()
     
-    np.savetxt(solution_path, solution, fmt="%.6f")
-    print(f"✅ Generated synthetic solution: {solution_path}")
     return solution
-
-def read_solution_txt(solution_path):
-    return np.loadtxt(solution_path)
 
 def overlay_on_image(
     img,
@@ -438,7 +430,7 @@ def main():
     contour = extract_contour(mask, midline_x)
     save_contour_and_image(img.copy(), contour, base_name)
 
-    # === Step 2: Write .in2d & run Netgen ===
+    # === Step 2: Write .in2d & run Netgen (to temporary files) ===
     write_in2d(contour, H, W, SUBSAMPLE_N, IN2D_FILE)
     run_netgen(IN2D_FILE, MESH_FILE)
 
@@ -446,35 +438,16 @@ def main():
     points, triangles = read_mesh(MESH_FILE)
     # draw_overlay(cv2.imread(IMAGE_PATH), points, triangles, contour)
 
-    # === GENERATE SOLUTION ===
-    solution = generate_solution(points, SOLUTION_PATH)
+    # === GENERATE SOLUTION (in-memory, do not write file) ===
+    solution = generate_solution(points)
 
-    # === GENERATE SUBDIVIDED DAT FILE ===
-    from writer_dat import write_subdivided_dat
-    write_subdivided_dat(IMAGE_PATH, points, triangles, n_sub=10, outpath=DAT_PATH)
-
+    # Write only the two requested visualizations
     draw_overlay_with_pde(cv2.imread(IMAGE_PATH), points, triangles, contour, solution, base_name)
 
+    # Second visualization (solution on coarse mesh)
     coarse_points = points
     coarse_triangles = triangles
-     # Load image & contour
     img = cv2.imread(IMAGE_PATH)
-    contour_points_file = os.path.join(OUTPUT_DIR, f"{base_name}_face_contour_final_clean_no_magic_points.txt")
-    try:
-        contour = np.loadtxt(contour_points_file, dtype=int)
-    except:
-        contour = None
-
-    # Option 1: .dat
-    fine_points, fine_colors, coarse_zones = read_dat_with_rgb(DAT_PATH)
-    overlay_on_image(
-        img, coarse_points, coarse_triangles,
-        fine_points=fine_points, fine_colors=fine_colors, coarse_zones=coarse_zones,
-        contour=contour, alpha = 1., mode="dat", base_name=base_name
-    )
-
-    # Option 2: .solution.txt
-    solution = read_solution_txt(SOLUTION_PATH)
     overlay_on_image(
         img, coarse_points, coarse_triangles,
         solution=solution,

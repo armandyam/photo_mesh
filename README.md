@@ -23,8 +23,17 @@ pip install -r requirements.txt
 
 Note: The `ngsolve` wheel bundles Netgen and provides the Python API on macOS (CPU).
 
-### Model Weights
-Download BiSeNet weights and place at `79999_iter.pth` in the project root. This file is ignored by git.
+### Model and Weights
+This project uses an open-source BiSeNet implementation and pretrained weights:
+
+- `model.py` and `resnet.py` are adapted from the Face Parsing BiSeNet implementation (CelebAMask-HQ):
+  - Repository: `https://github.com/zllrunning/face-parsing.PyTorch`
+  - Original backbone and segmentation modules were refactored locally for this pipeline.
+
+- Pretrained parsing weights (BiSeNet on face parsing) can be downloaded from the same repository releases or mirrors, for example:
+  - `79999_iter.pth` (checkpoint used here): `https://drive.google.com/file/d/1-Yg0cxgrNhHP-016FPdp902BR-kSsA4P/view` (linked from the repo README)
+
+Place the downloaded `79999_iter.pth` in the project root before running.
 
 ### Project Layout
 - `main.py` — pipeline entrypoint and CLI
