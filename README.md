@@ -49,8 +49,8 @@ python main.py inputs/input_01.jpg --alpha 0.45
 ```
 
 Outputs are written to `output/` with meaningful names that include alpha (percent):
-- `<name>_pde_overlay_alphaXX.png`
-- `<name>_solution_overlay_alphaXX.png`
+- `<name>_overlay_color_alphaXX.png` (color background)
+- `<name>_overlay_gray_alphaXX.png` (grayscale background)
 
 ### Examples
 
@@ -65,13 +65,13 @@ Outputs are written to `output/` with meaningful names that include alpha (perce
   <tbody>
     <tr>
       <td><img src="docs/examples/input_03.png" alt="input_03" width="260"></td>
-      <td><img src="docs/examples/input_03_mesh_pde_contour_overlay.png" alt="input_03_overlay" width="260"></td>
-      <td><img src="docs/examples/input_03_overlay_solution_coarse_mesh.png" alt="input_03_solution" width="260"></td>
+      <td><img src="docs/examples/input_03_overlay_color_alpha45.png" alt="input_03_overlay_color" width="260"></td>
+      <td><img src="docs/examples/input_03_overlay_gray_alpha45.png" alt="input_03_overlay_gray" width="260"></td>
     </tr>
     <tr>
       <td><img src="docs/examples/input_04.png" alt="input_04" width="260"></td>
-      <td><img src="docs/examples/input_04_mesh_pde_contour_overlay.png" alt="input_04_overlay" width="260"></td>
-      <td><img src="docs/examples/input_04_overlay_solution_coarse_mesh.png" alt="input_04_solution" width="260"></td>
+      <td><img src="docs/examples/input_04_overlay_color_alpha45.png" alt="input_04_overlay_color" width="260"></td>
+      <td><img src="docs/examples/input_04_overlay_gray_alpha45.png" alt="input_04_overlay_gray" width="260"></td>
     </tr>
   </tbody>
   </table>
