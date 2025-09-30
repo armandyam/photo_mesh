@@ -7,6 +7,7 @@ import mediapipe as mp
 from model import BiSeNet  # from official repo
 import subprocess
 import argparse
+import gmsh
 
 # === CONFIG ===
 WEIGHTS_PATH = "79999_iter.pth"
@@ -94,100 +95,74 @@ def save_contour_and_image(img, contour, base_name):
 
 
 def write_in2d(contour, H, W, subsample_n, in2d_file):
-    max_dim = max(H, W)
-    normalized = np.zeros_like(contour, dtype=float)
-    normalized[:, 0] = contour[:, 0] / max_dim
-    normalized[:, 1] = (H - contour[:, 1]) / max_dim
-
-    normalized_sub = normalized[::subsample_n]
-    print(f"ℹ️ Writing {len(normalized_sub)} points out of {len(normalized)}")
-
-    with open(in2d_file, 'w') as f:
-        f.write("splinecurves2dv2\n1\n\npoints\n")
-        for idx, (x, y) in enumerate(normalized_sub, 1):
-            f.write(f"{idx}\t{x:.6f}\t{y:.6f}\n")
-
-        f.write("\nsegments\n")
-        for idx in range(1, len(normalized_sub)):
-            f.write(f"1 0 2 {idx} {idx+1} -bc=1\n")
-        f.write(f"1 0 2 {len(normalized_sub)} 1 -bc=1\n")
-
-        f.write("\nmaterials\n1 face -maxh=1000\n")
-
-    print(f"✅ Prepared geometry for meshing")
+    # No-op retained for compatibility; Netgen path removed
+    print(f"✅ Prepared geometry for meshing (skipped file write)")
 
 
 def run_netgen(in2d_file, mesh_file):
-    print("🚀 Running Netgen...")
-    try:
-        from netgen.geom2d import SplineGeometry
-        from netgen.meshing import MeshingParameters
-        
-        # Read the .in2d file and create mesh using Python API
-        geo = SplineGeometry()
-        geo.Load(in2d_file)
-        
-        # Set meshing parameters - try different attribute names
-        mp = MeshingParameters()
-        if hasattr(mp, 'maxh'):
-            mp.maxh = 1000
-        elif hasattr(mp, 'max_element_size'):
-            mp.max_element_size = 1000
-        
-        # Generate mesh
-        mesh = geo.GenerateMesh(mp=mp)
-        
-        # Save mesh (temporary). Caller may delete after reading
-        mesh.Save(mesh_file)
-        print(f"✅ Netgen meshing finished")
-        
-    except Exception as e:
-        print(f"❌ Netgen Python API failed: {e}")
-        print("🔄 Trying alternative approach...")
-        try:
-            # Try using ngsolve instead
-            from ngsolve import Mesh
-            from netgen.geom2d import SplineGeometry
-            
-            geo = SplineGeometry()
-            geo.Load(in2d_file)
-            mesh = geo.GenerateMesh()
-            mesh.Save(mesh_file)
-            print(f"✅ NGSolve mesh generation finished")
-            
-        except Exception as e2:
-            print(f"❌ Alternative approach also failed: {e2}")
-            print("🔄 Skipping mesh generation - will use existing mesh if available")
-            # Don't fail the entire script, just skip mesh generation
+    # Netgen removed – function kept for compatibility
+    print("ℹ️ Netgen step skipped (pure-Python meshing)")
 
 
 def read_mesh(vol_path):
-    import gzip
-    if vol_path.endswith('.gz'):
-        with gzip.open(vol_path, 'rt') as f:
-            lines = f.readlines()
-    else:
-        with open(vol_path) as f:
-            lines = f.readlines()
+    # Kept for historical compatibility; not used in pure-Python path
+    raise RuntimeError("read_mesh is not used in the pure-Python meshing path")
 
-    # Points
-    for i, line in enumerate(lines):
-        if line.strip().lower() == "points":
-            num_points = int(lines[i+1].strip())
-            points = [list(map(float, l.strip().split()[:2])) for l in lines[i+2:i+2+num_points]]
-            break
+def generate_mesh_from_contour(contour: np.ndarray, H: int, W: int):
+    """
+    High-quality 2D meshing with Gmsh:
+    - Build a spline from the face contour
+    - Create a plane surface and generate a triangular mesh
+    Returns (points_normalized, triangles_indices)
+    """
+    max_dim = float(max(W, H))
+    gmsh.initialize()
+    gmsh.model.add("face")
+    try:
+        # Add points (in pixel coordinates)
+        point_tags = []
+        for x, y in contour.astype(float):
+            tag = gmsh.model.geo.addPoint(float(x), float(y), 0.0)
+            point_tags.append(tag)
 
-    # Triangles
-    for i, line in enumerate(lines):
-        if line.strip().lower() == "surfaceelements":
-            num_elements = int(lines[i+1].strip())
-            triangles = []
-            for l in lines[i+2:i+2+num_elements]:
-                parts = l.strip().split()
-                triangles.append([int(parts[-3])-1, int(parts[-2])-1, int(parts[-1])-1])
-            break
+        # Close the loop
+        if point_tags[0] != point_tags[-1]:
+            point_tags.append(point_tags[0])
 
-    return np.array(points), np.array(triangles)
+        # Spline through points, curve loop, and surface
+        spline = gmsh.model.geo.addSpline(point_tags)
+        loop = gmsh.model.geo.addCurveLoop([spline])
+        surf = gmsh.model.geo.addPlaneSurface([loop])
+
+        # Mesh options: quality and size adapted to image size
+        char_len = max_dim / 80.0
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMin", char_len * 0.5)
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMax", char_len * 1.5)
+        gmsh.option.setNumber("Mesh.Algorithm", 6)  # Frontal-Delaunay
+        gmsh.model.geo.synchronize()
+        gmsh.model.mesh.generate(2)
+
+        # Extract nodes and elements
+        node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
+        pts = np.array(node_coords, dtype=float).reshape(-1, 3)[:, :2]
+
+        tris = []
+        elem_types, elem_tags, elem_node_tags = gmsh.model.mesh.getElements(2)
+        for etype, nodes in zip(elem_types, elem_node_tags):
+            if etype == 2:  # 3-node triangle
+                conn = np.array(nodes, dtype=int).reshape(-1, 3) - 1
+                tris.append(conn)
+        if not tris:
+            raise RuntimeError("No triangle elements generated by Gmsh")
+        triangles = np.vstack(tris)
+
+        # Normalize to [0,1] with y-up
+        points_norm = pts.copy()
+        points_norm[:, 0] = pts[:, 0] / max_dim
+        points_norm[:, 1] = (H - pts[:, 1]) / max_dim
+        return points_norm, triangles
+    finally:
+        gmsh.finalize()
 
 def parse_dat(filepath, scalar_col=2):  # 0-based: 0=x,1=y,2=W1…
     points = []
@@ -430,12 +405,8 @@ def main():
     contour = extract_contour(mask, midline_x)
     save_contour_and_image(img.copy(), contour, base_name)
 
-    # === Step 2: Write .in2d & run Netgen (to temporary files) ===
-    write_in2d(contour, H, W, SUBSAMPLE_N, IN2D_FILE)
-    run_netgen(IN2D_FILE, MESH_FILE)
-
-    # === Step 3: Read mesh & overlay ===
-    points, triangles = read_mesh(MESH_FILE)
+    # === Step 2: Pure-Python meshing from contour ===
+    points, triangles = generate_mesh_from_contour(contour, H, W)
     # draw_overlay(cv2.imread(IMAGE_PATH), points, triangles, contour)
 
     # === GENERATE SOLUTION (in-memory, do not write file) ===

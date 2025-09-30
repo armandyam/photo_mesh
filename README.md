@@ -21,7 +21,7 @@ pip install -U pip
 pip install -r requirements.txt
 ```
 
-Note: The `ngsolve` wheel bundles Netgen and provides the Python API.
+Note: Netgen/NGSolve is no longer required; meshing uses the Gmsh Python API (Frontal-Delaunay) for high-quality 2D surface meshes.
 
 ### Model and Weights
 This project uses an open-source BiSeNet implementation and pretrained weights:
@@ -54,8 +54,8 @@ Outputs are written to `output/` with the input basename prefix, for example:
 - `<name>_overlay_solution_coarse_mesh.png`
 
 ### Implementation Notes
-- Mesh generation uses Netgen via the Python API from `ngsolve`; if unavailable it attempts a fallback.
-- Mesh files are saved as compressed `.vol.gz` and parsed directly in Python.
+- Mesh generation uses Gmsh (Python API) with Frontal-Delaunay for quality triangulation constrained to the face contour.
+- Only two images are written to `output/`: `<name>_mesh_pde_contour_overlay.png` and `<name>_overlay_solution_coarse_mesh.png`.
 - The PDE solution is synthetic (normalized product of sines). Replace with your solver as needed.
 
 ### Troubleshooting
