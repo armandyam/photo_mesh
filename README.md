@@ -52,6 +52,23 @@ Outputs are written to `output/` with the input basename prefix, for example:
 - `<name>_mesh_pde_contour_overlay.png`
 - `<name>_overlay_solution_coarse_mesh.png`
 
+### Examples
+Input images:
+
+![input_03](docs/examples/input_03.png)
+
+Generated outputs:
+
+![input_03_mesh_pde_contour_overlay](docs/examples/input_03_mesh_pde_contour_overlay.png)
+
+![input_03_overlay_solution_coarse_mesh](docs/examples/input_03_overlay_solution_coarse_mesh.png)
+
+![input_04](docs/examples/input_04.png)
+
+![input_04_mesh_pde_contour_overlay](docs/examples/input_04_mesh_pde_contour_overlay.png)
+
+![input_04_overlay_solution_coarse_mesh](docs/examples/input_04_overlay_solution_coarse_mesh.png)
+
 ### Implementation Notes
 - Mesh generation uses Gmsh (Python API) with Frontal-Delaunay for quality triangulation constrained to the face contour.
 - Only two images are written to `output/`: `<name>_mesh_pde_contour_overlay.png` and `<name>_overlay_solution_coarse_mesh.png`.
