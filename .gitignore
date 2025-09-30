@@ -24,3 +24,8 @@ old/
 
 # Logs
 *.log
+
+# Exclude specific inputs
+inputs/input_01.jpg
+inputs/input_02.jpg
+inputs/input_06.jpg
