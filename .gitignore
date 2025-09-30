@@ -1,0 +1,26 @@
+# Byte-compiled / cache
+__pycache__/
+*.pyc
+
+# Virtualenv
+venv/
+
+# Large weights and data
+79999_iter.pth
+*.pth
+*.pt
+
+# Outputs
+output/
+old/
+
+# OS files
+.DS_Store
+
+# Netgen/mesh artifacts
+*.vol
+*.vol.gz
+*.mesh
+
+# Logs
+*.log
