@@ -42,15 +42,15 @@ Place the downloaded `79999_iter.pth` in the project root before running.
 - `output/` — all generated artifacts per input image basename
 
 ### Usage
-Run the pipeline on an input image:
+Run the pipeline on an input image (with optional alpha):
 ```bash
 source venv/bin/activate
-python main.py inputs/input_01.jpg
+python main.py inputs/input_01.jpg --alpha 0.45
 ```
 
-Outputs are written to `output/` with the input basename prefix, for example:
-- `<name>_mesh_pde_contour_overlay.png`
-- `<name>_overlay_solution_coarse_mesh.png`
+Outputs are written to `output/` with meaningful names that include alpha (percent):
+- `<name>_pde_overlay_alphaXX.png`
+- `<name>_solution_overlay_alphaXX.png`
 
 ### Examples
 

@@ -253,7 +253,7 @@ def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, 
     # === Draw contour ===
     cv2.polylines(overlay, [contour.reshape((-1,1,2))], False, (0,0,0), 1)
 
-    output_file = os.path.join(OUTPUT_DIR, f"{base_name}_mesh_pde_contour_overlay.png")
+    output_file = os.path.join(OUTPUT_DIR, f"{base_name}_pde_overlay_alpha{int(alpha*100)}.png")
     cv2.imwrite(output_file, overlay)
     print(f"✅ Saved: {output_file}")
 
@@ -367,7 +367,10 @@ def overlay_on_image(
     if contour is not None:
         cv2.polylines(overlay, [contour.reshape((-1,1,2))], False, (0,0,0), 1)
 
-    outname = os.path.join(OUTPUT_DIR, f"{base_name}_overlay_{mode}_coarse_mesh.png")
+    if mode == "solution":
+        outname = os.path.join(OUTPUT_DIR, f"{base_name}_solution_overlay_alpha{int(alpha*100)}.png")
+    else:
+        outname = os.path.join(OUTPUT_DIR, f"{base_name}_dat_overlay_alpha{int(alpha*100)}.png")
     cv2.imwrite(outname, overlay)
     print(f"✅ Saved: {outname}")
 
@@ -376,6 +379,7 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Photo to Mesh Pipeline')
     parser.add_argument('input_image', help='Path to input image file')
+    parser.add_argument('--alpha', type=float, default=0.3, help='Overlay alpha in [0,1] (default: 0.3)')
     args = parser.parse_args()
     
     IMAGE_PATH = args.input_image
@@ -413,7 +417,7 @@ def main():
     solution = generate_solution(points)
 
     # Write only the two requested visualizations
-    draw_overlay_with_pde(cv2.imread(IMAGE_PATH), points, triangles, contour, solution, base_name)
+    draw_overlay_with_pde(cv2.imread(IMAGE_PATH), points, triangles, contour, solution, base_name, alpha=max(0.0, min(1.0, args.alpha)))
 
     # Second visualization (solution on coarse mesh)
     coarse_points = points
@@ -422,7 +426,7 @@ def main():
     overlay_on_image(
         img, coarse_points, coarse_triangles,
         solution=solution,
-        contour=contour, alpha=0.5, mode="solution", base_name=base_name
+        contour=contour, alpha=max(0.0, min(1.0, args.alpha)), mode="solution", base_name=base_name
     )
 
 if __name__ == "__main__":
