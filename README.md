@@ -21,7 +21,7 @@ pip install -U pip
 pip install -r requirements.txt
 ```
 
-Note: The `ngsolve` wheel bundles Netgen and provides the Python API on macOS (CPU).
+Note: The `ngsolve` wheel bundles Netgen and provides the Python API.
 
 ### Model and Weights
 This project uses an open-source BiSeNet implementation and pretrained weights:
@@ -31,7 +31,7 @@ This project uses an open-source BiSeNet implementation and pretrained weights:
   - Original backbone and segmentation modules were refactored locally for this pipeline.
 
 - Pretrained parsing weights (BiSeNet on face parsing) can be downloaded from the same repository releases or mirrors, for example:
-  - `79999_iter.pth` (checkpoint used here): `https://drive.google.com/file/d/1-Yg0cxgrNhHP-016FPdp902BR-kSsA4P/view` (linked from the repo README)
+  - `79999_iter.pth` (checkpoint used here): `https://drive.google.com/file/d/154JgKpzCPW82qINcVieuPH3fZ2e0P812/view` (linked from the repo README)
 
 Place the downloaded `79999_iter.pth` in the project root before running.
 
@@ -50,14 +50,7 @@ python main.py inputs/input_01.jpg
 ```
 
 Outputs are written to `output/` with the input basename prefix, for example:
-- `<name>_face_contour_final_clean_no_magic.jpg`
-- `<name>_face_contour_final_clean_no_magic_points.txt`
-- `<name>_mesh_normalized_subsampled.in2d`
-- `<name>_out.mesh.vol.gz`
-- `<name>_solution.txt`
-- `<name>_subdivided_image.dat`
 - `<name>_mesh_pde_contour_overlay.png`
-- `<name>_overlay_dat_coarse_mesh.png`
 - `<name>_overlay_solution_coarse_mesh.png`
 
 ### Implementation Notes
