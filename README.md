@@ -1,11 +1,11 @@
 ## Photo Mesh Pipeline
 
-Extract a face contour from a photo, generate a 2D triangular mesh with Netgen/NGSolve, and overlay a synthetic PDE solution on the face region.
+Extract a face contour from a photo, generate a 2D triangular mesh with Gmsh, and overlay a synthetic PDE solution on the face region.
 
 ### Features
 - Face parsing with BiSeNet (pretrained weights)
 - Midline detection with MediaPipe FaceMesh
-- 2D mesh generation from the face contour (Netgen/NGSolve)
+- 2D mesh generation from the face contour (Gmsh)
 - Synthetic PDE visualization and image-colored mesh overlays
 - Clean input/output separation (`inputs/` → `output/`)
 
@@ -60,5 +60,5 @@ Outputs are written to `output/` with the input basename prefix, for example:
 
 ### Troubleshooting
 - If MediaPipe cannot detect a face, ensure the image has a clear, frontal face.
-- If `ngsolve` install fails, upgrade pip and retry. On Apple Silicon, ensure you use the venv’s Python.
+- If Gmsh import fails, upgrade pip and retry: `pip install -U gmsh`. Ensure you run inside the venv’s Python.
 
