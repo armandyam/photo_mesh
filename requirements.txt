@@ -1,6 +1,6 @@
-numpy
-opencv-python
-torch
-torchvision
-mediapipe
-ngsolve
+numpy>=1.26
+opencv-python>=4.9
+torch>=2.1
+torchvision>=0.16
+mediapipe>=0.10
+ngsolve>=6.2
