@@ -21,7 +21,6 @@ pip install -U pip
 pip install -r requirements.txt
 ```
 
-Note: Netgen/NGSolve is no longer required; meshing uses the Gmsh Python API (Frontal-Delaunay) for high-quality 2D surface meshes.
 
 ### Model and Weights
 This project uses an open-source BiSeNet implementation and pretrained weights:
