@@ -53,21 +53,28 @@ Outputs are written to `output/` with the input basename prefix, for example:
 - `<name>_overlay_solution_coarse_mesh.png`
 
 ### Examples
-Input images:
 
-![input_03](docs/examples/input_03.png)
-
-Generated outputs:
-
-![input_03_mesh_pde_contour_overlay](docs/examples/input_03_mesh_pde_contour_overlay.png)
-
-![input_03_overlay_solution_coarse_mesh](docs/examples/input_03_overlay_solution_coarse_mesh.png)
-
-![input_04](docs/examples/input_04.png)
-
-![input_04_mesh_pde_contour_overlay](docs/examples/input_04_mesh_pde_contour_overlay.png)
-
-![input_04_overlay_solution_coarse_mesh](docs/examples/input_04_overlay_solution_coarse_mesh.png)
+<table>
+  <thead>
+    <tr>
+      <th>Input</th>
+      <th>PDE contour overlay</th>
+      <th>Solution coarse mesh</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><img src="docs/examples/input_03.png" alt="input_03" width="260"></td>
+      <td><img src="docs/examples/input_03_mesh_pde_contour_overlay.png" alt="input_03_overlay" width="260"></td>
+      <td><img src="docs/examples/input_03_overlay_solution_coarse_mesh.png" alt="input_03_solution" width="260"></td>
+    </tr>
+    <tr>
+      <td><img src="docs/examples/input_04.png" alt="input_04" width="260"></td>
+      <td><img src="docs/examples/input_04_mesh_pde_contour_overlay.png" alt="input_04_overlay" width="260"></td>
+      <td><img src="docs/examples/input_04_overlay_solution_coarse_mesh.png" alt="input_04_solution" width="260"></td>
+    </tr>
+  </tbody>
+  </table>
 
 ### Implementation Notes
 - Mesh generation uses Gmsh (Python API) with Frontal-Delaunay for quality triangulation constrained to the face contour.
