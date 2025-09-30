@@ -253,7 +253,7 @@ def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, 
     # === Draw contour ===
     cv2.polylines(overlay, [contour.reshape((-1,1,2))], False, (0,0,0), 1)
 
-    output_file = os.path.join(OUTPUT_DIR, f"{base_name}_pde_overlay_alpha{int(alpha*100)}.png")
+    output_file = os.path.join(OUTPUT_DIR, f"{base_name}_overlay_color_alpha{int(alpha*100)}.png")
     cv2.imwrite(output_file, overlay)
     print(f"✅ Saved: {output_file}")
 
@@ -368,7 +368,7 @@ def overlay_on_image(
         cv2.polylines(overlay, [contour.reshape((-1,1,2))], False, (0,0,0), 1)
 
     if mode == "solution":
-        outname = os.path.join(OUTPUT_DIR, f"{base_name}_solution_overlay_alpha{int(alpha*100)}.png")
+        outname = os.path.join(OUTPUT_DIR, f"{base_name}_overlay_gray_alpha{int(alpha*100)}.png")
     else:
         outname = os.path.join(OUTPUT_DIR, f"{base_name}_dat_overlay_alpha{int(alpha*100)}.png")
     cv2.imwrite(outname, overlay)
