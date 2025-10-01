@@ -11,7 +11,12 @@ import gmsh
 
 # === CONFIG ===
 WEIGHTS_PATH = "79999_iter.pth"
-LABELS_TO_KEEP = [1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+# Face parsing labels (BiSeNet 19-class model - CelebAMask-HQ dataset):
+# 0: Background, 1: Skin, 2: Left Brow, 3: Right Brow, 4: Left Eye, 5: Right Eye
+# 6: Glasses, 7: Left Ear, 8: Right Ear, 9: Ear Ring, 10: Nose, 11: Mouth
+# 12: Upper Lip, 13: Lower Lip, 14: Neck, 15: Necklace, 16: Cloth, 17: Hair, 18: Hat
+# Keeping facial regions + right ear + hair + lips, excluding: left ear (7), neck (14), necklace (15), cloth (16)
+LABELS_TO_KEEP = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 17, 18]
 MODEL_INPUT_SIZE = 512
 SUBSAMPLE_N = 20
 

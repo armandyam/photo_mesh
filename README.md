@@ -3,7 +3,7 @@
 Extract a face contour from a photo, generate a 2D triangular mesh with Gmsh, and overlay a synthetic PDE solution on the face region.
 
 ### Features
-- Face parsing with BiSeNet (pretrained weights)
+- Face parsing with BiSeNet (pretrained weights) - face-only segmentation excluding neck, clothing, and left ear
 - Midline detection with MediaPipe FaceMesh
 - 2D mesh generation from the face contour (Gmsh)
 - Synthetic PDE visualization and image-colored mesh overlays
@@ -76,9 +76,16 @@ Outputs are written to `output/` with meaningful names that include alpha (perce
   </tbody>
   </table>
 
+### Face Segmentation Configuration
+The pipeline uses BiSeNet with 19 face parsing classes from the CelebAMask-HQ dataset. The current configuration includes:
+- **Included**: Skin, eyebrows, eyes, glasses, right ear, earring, nose, mouth, lips, hair, hat
+- **Excluded**: Left ear, neck, necklace, clothing
+
+You can modify `LABELS_TO_KEEP` in `main.py` to adjust which facial regions are included in the segmentation.
+
 ### Implementation Notes
 - Mesh generation uses Gmsh (Python API) with Frontal-Delaunay for quality triangulation constrained to the face contour.
-- Only two images are written to `output/`: `<name>_mesh_pde_contour_overlay.png` and `<name>_overlay_solution_coarse_mesh.png`.
+- Only two images are written to `output/`: `<name>_overlay_color_alphaXX.png` and `<name>_overlay_gray_alphaXX.png`.
 - The PDE solution is synthetic (normalized product of sines). Replace with your solver as needed.
 
 ### Troubleshooting
