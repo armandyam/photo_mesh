@@ -139,10 +139,10 @@ def generate_mesh_from_contour(contour: np.ndarray, H: int, W: int):
         loop = gmsh.model.geo.addCurveLoop([spline])
         surf = gmsh.model.geo.addPlaneSurface([loop])
 
-        # Mesh options: quality and size adapted to image size
-        char_len = max_dim / 80.0
-        gmsh.option.setNumber("Mesh.CharacteristicLengthMin", char_len * 0.5)
-        gmsh.option.setNumber("Mesh.CharacteristicLengthMax", char_len * 1.5)
+        # Mesh options: quality and size adapted to image size - higher resolution
+        char_len = max_dim / 90.0  # Increased resolution (was 80.0)
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMin", char_len * 0.3)  # Smaller min size
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMax", char_len * 1.2)  # Smaller max size
         gmsh.option.setNumber("Mesh.Algorithm", 6)  # Frontal-Delaunay
         gmsh.model.geo.synchronize()
         gmsh.model.mesh.generate(2)
@@ -308,6 +308,51 @@ def generate_solution(points):
     
     return solution
 
+def extract_image_colors_at_points(points, img, H, W):
+    """Extract image colors at mesh points and convert to grayscale for JET colormap."""
+    max_dim = max(W, H)
+    
+    # Convert points back to image coordinates
+    points_img = points * max_dim
+    points_img[:, 1] = H - points_img[:, 1]  # Flip y-coordinate
+    
+    # Clamp coordinates to image bounds
+    points_img[:, 0] = np.clip(points_img[:, 0], 0, W-1)
+    points_img[:, 1] = np.clip(points_img[:, 1], 0, H-1)
+    
+    # Convert to grayscale
+    gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # Sample colors at mesh points with bilinear interpolation for smoother results
+    colors = []
+    for pt in points_img:
+        x, y = pt[0], pt[1]
+        
+        # Bilinear interpolation for smoother color sampling
+        x1, y1 = int(x), int(y)
+        x2, y2 = min(x1 + 1, W-1), min(y1 + 1, H-1)
+        
+        # Get the four surrounding pixels
+        c11 = gray_img[y1, x1]
+        c12 = gray_img[y2, x1] if y2 < H else c11
+        c21 = gray_img[y1, x2] if x2 < W else c11
+        c22 = gray_img[y2, x2] if (x2 < W and y2 < H) else c11
+        
+        # Bilinear interpolation weights
+        wx = x - x1
+        wy = y - y1
+        
+        # Interpolate
+        c = (1-wx)*(1-wy)*c11 + wx*(1-wy)*c21 + (1-wx)*wy*c12 + wx*wy*c22
+        colors.append(c)
+    
+    colors = np.array(colors, dtype=np.float32)
+    
+    # Normalize to [0,1] for JET colormap
+    colors = colors / 255.0
+    
+    return colors
+
 def overlay_on_image(
     img,
     coarse_points,
@@ -418,8 +463,8 @@ def main():
     points, triangles = generate_mesh_from_contour(contour, H, W)
     # draw_overlay(cv2.imread(IMAGE_PATH), points, triangles, contour)
 
-    # === GENERATE SOLUTION (in-memory, do not write file) ===
-    solution = generate_solution(points)
+    # === EXTRACT IMAGE COLORS AT MESH POINTS ===
+    solution = extract_image_colors_at_points(points, img, H, W)
 
     # Write only the two requested visualizations
     draw_overlay_with_pde(cv2.imread(IMAGE_PATH), points, triangles, contour, solution, base_name, alpha=max(0.0, min(1.0, args.alpha)))

@@ -52,6 +52,8 @@ Outputs are written to `output/` with meaningful names that include alpha (perce
 - `<name>_overlay_color_alphaXX.png` (color background)
 - `<name>_overlay_gray_alphaXX.png` (grayscale background)
 
+Example: `input_03_overlay_color_alpha60.png` for alpha=0.6
+
 ### Examples
 
 <table>
@@ -65,13 +67,13 @@ Outputs are written to `output/` with meaningful names that include alpha (perce
   <tbody>
     <tr>
       <td><img src="docs/examples/input_03.png" alt="input_03" width="260"></td>
-      <td><img src="docs/examples/input_03_overlay_color_alpha45.png" alt="input_03_overlay_color" width="260"></td>
-      <td><img src="docs/examples/input_03_overlay_gray_alpha45.png" alt="input_03_overlay_gray" width="260"></td>
+      <td><img src="docs/examples/input_03_overlay_color_alpha60.png" alt="input_03_overlay_color" width="260"></td>
+      <td><img src="docs/examples/input_03_overlay_gray_alpha60.png" alt="input_03_overlay_gray" width="260"></td>
     </tr>
     <tr>
       <td><img src="docs/examples/input_04.png" alt="input_04" width="260"></td>
-      <td><img src="docs/examples/input_04_overlay_color_alpha45.png" alt="input_04_overlay_color" width="260"></td>
-      <td><img src="docs/examples/input_04_overlay_gray_alpha45.png" alt="input_04_overlay_gray" width="260"></td>
+      <td><img src="docs/examples/input_04_overlay_color_alpha60.png" alt="input_04_overlay_color" width="260"></td>
+      <td><img src="docs/examples/input_04_overlay_gray_alpha60.png" alt="input_04_overlay_gray" width="260"></td>
     </tr>
   </tbody>
   </table>
@@ -86,7 +88,7 @@ You can modify `LABELS_TO_KEEP` in `main.py` to adjust which facial regions are 
 ### Implementation Notes
 - Mesh generation uses Gmsh (Python API) with Frontal-Delaunay for quality triangulation constrained to the face contour.
 - Only two images are written to `output/`: `<name>_overlay_color_alphaXX.png` and `<name>_overlay_gray_alphaXX.png`.
-- The PDE solution is synthetic (normalized product of sines). Replace with your solver as needed.
+- The visualization uses actual image colors mapped to the JET colormap (hot-to-cool) for meaningful data representation.
 
 ### Troubleshooting
 - If MediaPipe cannot detect a face, ensure the image has a clear, frontal face.
