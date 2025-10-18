@@ -24,8 +24,10 @@ def run_pipeline_with_alpha(input_image, alpha):
     
     # Get the base name for output files
     base_name = os.path.splitext(os.path.basename(input_image))[0]
-    color_file = f"output/{base_name}_overlay_color_alpha{int(alpha*100)}.png"
-    gray_file = f"output/{base_name}_overlay_gray_alpha{int(alpha*100)}.png"
+    # Since we're using default cutoff position (0.5), add the cutoff suffix
+    cutoff_suffix = "_cutoff050"
+    color_file = f"output/{base_name}{cutoff_suffix}_overlay_color_alpha{int(alpha*100)}.png"
+    gray_file = f"output/{base_name}{cutoff_suffix}_overlay_gray_alpha{int(alpha*100)}.png"
     
     return color_file, gray_file
 

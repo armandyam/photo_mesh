@@ -15,8 +15,8 @@ WEIGHTS_PATH = "79999_iter.pth"
 # 0: Background, 1: Skin, 2: Left Brow, 3: Right Brow, 4: Left Eye, 5: Right Eye
 # 6: Glasses, 7: Left Ear, 8: Right Ear, 9: Ear Ring, 10: Nose, 11: Mouth
 # 12: Upper Lip, 13: Lower Lip, 14: Neck, 15: Necklace, 16: Cloth, 17: Hair, 18: Hat
-# Keeping facial regions + right ear + hair + lips, excluding: left ear (7), neck (14), necklace (15), cloth (16)
-LABELS_TO_KEEP = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 17, 18]
+# Full body extraction: including neck, clothing, and all facial features
+LABELS_TO_KEEP = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
 MODEL_INPUT_SIZE = 512
 SUBSAMPLE_N = 20
 
@@ -67,15 +67,30 @@ def segment_face(net, img):
     return mask
 
 
-def extract_contour(mask, midline_x):
+def extract_contour(mask, cutoff_x):
+    """
+    Extract contour with configurable cutoff position.
+    
+    Args:
+        mask: Segmentation mask
+        cutoff_x: X coordinate for cutoff line
+    """
+    H, W = mask.shape
+    
+    # Create mask for everything to the left of cutoff line
     mask_left = np.zeros_like(mask)
-    mask_left[:, :midline_x] = mask[:, :midline_x]
+    mask_left[:, :cutoff_x] = mask[:, :cutoff_x]
+    
     contours, _ = cv2.findContours(mask_left, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    
+    if not contours:
+        return np.array([], dtype=int).reshape(0, 2)
+        
     largest = max(contours, key=cv2.contourArea)
     contour = largest[:, 0, :]
 
     x_vals, y_vals = contour[:, 0], contour[:, 1]
-    bump_mask = (x_vals >= midline_x)
+    bump_mask = (x_vals >= cutoff_x)
 
     if np.any(bump_mask):
         y_top_bump = np.min(y_vals[bump_mask])
@@ -85,8 +100,8 @@ def extract_contour(mask, midline_x):
 
     new_contour = []
     for x, y in contour:
-        if y_top_bump <= y <= y_bottom_bump and x >= midline_x:
-            new_contour.append([midline_x, y])
+        if y_top_bump <= y <= y_bottom_bump and x >= cutoff_x:
+            new_contour.append([cutoff_x, y])
         else:
             new_contour.append([x, y])
 
@@ -215,9 +230,10 @@ def parse_dat(filepath, scalar_col=2):  # 0-based: 0=x,1=y,2=W1…
     return points, triangles, solution
 
 
-def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, alpha=0.3):
+def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, alpha=0.3, cutoff_x=None):
     H, W = img.shape[:2]
-    midline_x = W // 2
+    if cutoff_x is None:
+        cutoff_x = W // 2
     max_dim = max(W, H)
 
     # Rescale points to image
@@ -238,8 +254,8 @@ def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, 
         color_val = np.mean(sol_norm[tri])
         color = cv2.applyColorMap(np.uint8([[color_val*255]]), cv2.COLORMAP_JET)[0,0,:].tolist()
 
-        # Only draw left of midline
-        if np.all(pts[:,0] <= midline_x+10):
+        # Only draw left of cutoff line
+        if np.all(pts[:,0] <= cutoff_x+10):
             cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
 
     # Blend only the triangle_layer with original photo
@@ -256,7 +272,8 @@ def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, 
         cv2.circle(overlay, tuple(pt.astype(int)), 1, (0,0,0), -1)
 
     # === Draw contour ===
-    cv2.polylines(overlay, [contour.reshape((-1,1,2))], False, (0,0,0), 1)
+    if len(contour) > 0:
+        cv2.polylines(overlay, [contour.reshape((-1,1,2))], False, (0,0,0), 1)
 
     output_file = os.path.join(OUTPUT_DIR, f"{base_name}_overlay_color_alpha{int(alpha*100)}.png")
     cv2.imwrite(output_file, overlay)
@@ -364,10 +381,12 @@ def overlay_on_image(
     contour=None,
     alpha=1.,
     mode="dat",
-    base_name="output"
+    base_name="output",
+    cutoff_x=None
 ):
     H,W = img.shape[:2]
-    midline_x = W//2
+    if cutoff_x is None:
+        cutoff_x = W//2
     max_dim = max(W,H)
 
     coarse_points_img = coarse_points * max_dim
@@ -388,7 +407,7 @@ def overlay_on_image(
             for tri in fine_tris:
                 pts = fine_points_img[tri].astype(int)
                 color = np.mean(fine_colors[tri], axis=0).astype(int).tolist()
-                if np.any(pts[:,0]<=midline_x+10):
+                if np.any(pts[:,0]<=cutoff_x+10):
                     cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
 
     elif mode == "solution":
@@ -397,7 +416,7 @@ def overlay_on_image(
             pts = coarse_points_img[tri].astype(int)
             color_val = np.mean(sol_norm[tri])
             color = cv2.applyColorMap(np.uint8([[color_val*255]]), cv2.COLORMAP_JET)[0,0,:].tolist()
-            if np.any(pts[:,0]<=midline_x+10):
+            if np.any(pts[:,0]<=cutoff_x+10):
                 cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
 
     # Blend
@@ -414,7 +433,7 @@ def overlay_on_image(
     for pt in coarse_points_img:
         cv2.circle(overlay, tuple(pt.astype(int)), 1, (0,0,0), -1)
 
-    if contour is not None:
+    if contour is not None and len(contour) > 0:
         cv2.polylines(overlay, [contour.reshape((-1,1,2))], False, (0,0,0), 1)
 
     if mode == "solution":
@@ -430,12 +449,15 @@ def main():
     parser = argparse.ArgumentParser(description='Photo to Mesh Pipeline')
     parser.add_argument('input_image', help='Path to input image file')
     parser.add_argument('--alpha', type=float, default=0.3, help='Overlay alpha in [0,1] (default: 0.3)')
+    parser.add_argument('--cutoff-position', type=float, default=0.5,
+                       help='Cutoff position as fraction of image width (0-1, default: 0.5 for center)')
     args = parser.parse_args()
     
     IMAGE_PATH = args.input_image
     
-    # Generate unique filenames based on input image
+    # Generate unique filenames based on input image and cutoff position
     base_name = os.path.splitext(os.path.basename(IMAGE_PATH))[0]
+    cutoff_suffix = f"_cutoff{int(args.cutoff_position*100):03d}"
     IN2D_FILE = os.path.join(OUTPUT_DIR, f"{base_name}_mesh_normalized_subsampled.in2d")
     MESH_FILE = os.path.join(OUTPUT_DIR, f"{base_name}_out.mesh.vol.gz")
     SOLUTION_PATH = os.path.join(OUTPUT_DIR, f"{base_name}_solution.txt")
@@ -454,30 +476,42 @@ def main():
     print(f"📐 Image dimensions: {W}x{H}")
 
     net = load_bisenet()
-    midline_x = find_midline(img)
+    # midline_x = find_midline(img)
     mask = segment_face(net, img)
-    contour = extract_contour(mask, midline_x)
-    save_contour_and_image(img.copy(), contour, base_name)
+    
+    # Calculate cutoff position
+    cutoff_x = int(args.cutoff_position * W)
+    print(f"ℹ️ Cutoff position: x = {cutoff_x} ({args.cutoff_position*100:.1f}% of image width)")
+    
+    contour = extract_contour(mask, cutoff_x)
 
     # === Step 2: Pure-Python meshing from contour ===
-    points, triangles = generate_mesh_from_contour(contour, H, W)
-    # draw_overlay(cv2.imread(IMAGE_PATH), points, triangles, contour)
+    if len(contour) > 0:
+        points, triangles = generate_mesh_from_contour(contour, H, W)
+        # draw_overlay(cv2.imread(IMAGE_PATH), points, triangles, contour)
 
-    # === EXTRACT IMAGE COLORS AT MESH POINTS ===
-    solution = extract_image_colors_at_points(points, img, H, W)
+        # === EXTRACT IMAGE COLORS AT MESH POINTS ===
+        solution = extract_image_colors_at_points(points, img, H, W)
 
-    # Write only the two requested visualizations
-    draw_overlay_with_pde(cv2.imread(IMAGE_PATH), points, triangles, contour, solution, base_name, alpha=max(0.0, min(1.0, args.alpha)))
+        # Write only the two requested visualizations
+        draw_overlay_with_pde(cv2.imread(IMAGE_PATH), points, triangles, contour, solution, base_name + cutoff_suffix, alpha=max(0.0, min(1.0, args.alpha)), cutoff_x=cutoff_x)
 
-    # Second visualization (solution on coarse mesh)
-    coarse_points = points
-    coarse_triangles = triangles
-    img = cv2.imread(IMAGE_PATH)
-    overlay_on_image(
-        img, coarse_points, coarse_triangles,
-        solution=solution,
-        contour=contour, alpha=max(0.0, min(1.0, args.alpha)), mode="solution", base_name=base_name
-    )
+        # Second visualization (solution on coarse mesh)
+        coarse_points = points
+        coarse_triangles = triangles
+        img = cv2.imread(IMAGE_PATH)
+        overlay_on_image(
+            img, coarse_points, coarse_triangles,
+            solution=solution,
+            contour=contour, alpha=max(0.0, min(1.0, args.alpha)), mode="solution", base_name=base_name + cutoff_suffix, cutoff_x=cutoff_x
+        )
+    else:
+        print("ℹ️ No contour generated (0% cutoff) - saving original image")
+        # Save original image when no meshing is applied
+        original_img = cv2.imread(IMAGE_PATH)
+        output_file = os.path.join(OUTPUT_DIR, f"{base_name}_original.png")
+        cv2.imwrite(output_file, original_img)
+        print(f"✅ Saved: {output_file}")
 
 if __name__ == "__main__":
     main()
