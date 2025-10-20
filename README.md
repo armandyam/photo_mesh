@@ -48,11 +48,23 @@ source venv/bin/activate
 python main.py inputs/input_01.jpg --alpha 0.45
 ```
 
+#### Cutoff options
+- Use image-wide cutoff (default at 50% of image width):
+```bash
+python main.py inputs/input_03.png --cutoff-position 0.5 --alpha 0.6
+```
+- Use exact face midline (forehead/eyes/nose/mouth landmarks via MediaPipe):
+```bash
+python main.py inputs/input_03.png --use-face-midline --alpha 0.6
+```
+
+If `--use-face-midline` fails to detect a face, the code falls back to the `--cutoff-position` fraction of image width.
+
 Outputs are written to `output/` with meaningful names that include alpha (percent):
 - `<name>_overlay_color_alphaXX.png` (color background)
 - `<name>_overlay_gray_alphaXX.png` (grayscale background)
 
-Example: `input_03_overlay_color_alpha60.png` for alpha=0.6
+Examples: `input_03_overlay_color_alpha60.png` for alpha=0.6. When using face midline, filenames include `_face_midline`.
 
 ### Examples
 

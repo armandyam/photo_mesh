@@ -13,9 +13,17 @@ import subprocess
 import argparse
 from pathlib import Path
 
-def run_pipeline_with_alpha(input_image, alpha):
-    """Run the main pipeline with a specific alpha value."""
+def run_pipeline_with_alpha(input_image, alpha, show_mesh_nodes=False, show_voronoi=False, use_different_contour_mesh=False):
+    """Run the main pipeline with a specific alpha value and optional features."""
     cmd = ["python", "main.py", input_image, "--alpha", str(alpha)]
+    
+    if show_mesh_nodes:
+        cmd.append("--show-mesh-nodes")
+    if show_voronoi:
+        cmd.append("--show-voronoi")
+    if use_different_contour_mesh:
+        cmd.append("--use-different-contour-mesh")
+    
     result = subprocess.run(cmd, capture_output=True, text=True)
     
     if result.returncode != 0:
@@ -124,6 +132,12 @@ def main():
     parser = argparse.ArgumentParser(description='Create alpha comparison grid')
     parser.add_argument('input_image', help='Path to input image file')
     parser.add_argument('--output-dir', default='output', help='Output directory (default: output)')
+    parser.add_argument('--show-mesh-nodes', action='store_true',
+                       help='Show mesh nodes as bigger dots')
+    parser.add_argument('--show-voronoi', action='store_true',
+                       help='Show Voronoi diagram with thin lines')
+    parser.add_argument('--use-different-contour-mesh', action='store_true',
+                       help='Use a different mesh for contour visualization (coarser)')
     args = parser.parse_args()
     
     input_image = args.input_image
@@ -146,7 +160,12 @@ def main():
     
     for alpha in alpha_values:
         print(f"🔄 Processing alpha = {alpha:.1f}")
-        color_file, gray_file = run_pipeline_with_alpha(input_image, alpha)
+        color_file, gray_file = run_pipeline_with_alpha(
+            input_image, alpha, 
+            show_mesh_nodes=args.show_mesh_nodes,
+            show_voronoi=args.show_voronoi,
+            use_different_contour_mesh=args.use_different_contour_mesh
+        )
         
         if color_file and gray_file:
             color_paths.append(color_file)

@@ -13,13 +13,23 @@ import subprocess
 import argparse
 from pathlib import Path
 
-def run_pipeline_with_cutoff(input_image, cutoff_position, alpha=0.6):
-    """Run the main pipeline with a specific cutoff position."""
+def run_pipeline_with_cutoff(input_image, cutoff_position, alpha=0.6, show_mesh_nodes=False, show_voronoi=False, use_different_contour_mesh=False, hide_contour_outline=False):
+    """Run the main pipeline with a specific cutoff position and optional features."""
     cmd = [
         "python", "main.py", input_image, 
         "--alpha", str(alpha),
         "--cutoff-position", str(cutoff_position)
     ]
+    
+    if show_mesh_nodes:
+        cmd.append("--show-mesh-nodes")
+    if show_voronoi:
+        cmd.append("--show-voronoi")
+    if use_different_contour_mesh:
+        cmd.append("--use-different-contour-mesh")
+    if hide_contour_outline:
+        cmd.append("--hide-contour-outline")
+    
     result = subprocess.run(cmd, capture_output=True, text=True)
     
     if result.returncode != 0:
@@ -40,7 +50,7 @@ def run_pipeline_with_cutoff(input_image, cutoff_position, alpha=0.6):
     
     return color_file, gray_file
 
-def create_animation_frames(input_image, start_position=0.0, end_position=1.0, alpha=0.6, num_frames=21):
+def create_animation_frames(input_image, start_position=0.0, end_position=1.0, alpha=0.6, num_frames=21, show_mesh_nodes=False, show_voronoi=False, use_different_contour_mesh=False, hide_contour_outline=False):
     """
     Create animation frames showing gradual consumption by simulation.
     
@@ -50,6 +60,10 @@ def create_animation_frames(input_image, start_position=0.0, end_position=1.0, a
         end_position: Ending cutoff position (0.0-1.0, default: 1.0 for full meshing)
         alpha: Overlay transparency
         num_frames: Number of frames in animation (default: 21)
+        show_mesh_nodes: Show mesh nodes as bigger dots
+        show_voronoi: Show Voronoi diagram with thin lines
+        use_different_contour_mesh: Use a different mesh for contour visualization
+        hide_contour_outline: Hide the contour outline
     """
     print(f"🎬 Creating simulation animation with {num_frames} frames")
     print(f"📍 Cutoff range: {start_position*100:.1f}% to {end_position*100:.1f}% from left")
@@ -65,7 +79,7 @@ def create_animation_frames(input_image, start_position=0.0, end_position=1.0, a
         print(f"🔄 Frame {i+1}/{num_frames}: cutoff at {cutoff_position*100:.1f}% from left")
         
         color_file, gray_file = run_pipeline_with_cutoff(
-            input_image, cutoff_position, alpha
+            input_image, cutoff_position, alpha, show_mesh_nodes, show_voronoi, use_different_contour_mesh, hide_contour_outline
         )
         
         if color_file and gray_file and os.path.exists(color_file):
@@ -186,6 +200,14 @@ def main():
                        help='Video frames per second (default: 10.0)')
     parser.add_argument('--output-dir', default='output', 
                        help='Output directory (default: output)')
+    parser.add_argument('--show-mesh-nodes', action='store_true',
+                       help='Show mesh nodes as bigger dots')
+    parser.add_argument('--show-voronoi', action='store_true',
+                       help='Show Voronoi diagram with thin lines')
+    parser.add_argument('--use-different-contour-mesh', action='store_true',
+                       help='Use a different mesh for contour visualization')
+    parser.add_argument('--hide-contour-outline', action='store_true',
+                       help='Hide the contour outline')
     args = parser.parse_args()
     
     input_image = args.input_image
@@ -207,7 +229,11 @@ def main():
         args.start_position,
         args.end_position,
         args.alpha, 
-        args.num_frames
+        args.num_frames,
+        args.show_mesh_nodes,
+        args.show_voronoi,
+        args.use_different_contour_mesh,
+        args.hide_contour_outline
     )
     
     # Create animations

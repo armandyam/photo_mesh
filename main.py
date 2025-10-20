@@ -36,6 +36,13 @@ def load_bisenet():
 
 
 def find_midline(img):
+    """
+    Find the exact face midline using multiple facial landmarks:
+    - Forehead center (top of face)
+    - Nose center (nose tip)
+    - Eye center (between left and right eye)
+    - Mouth center (between left and right mouth corners)
+    """
     H, W = img.shape[:2]
     mp_face_mesh = mp.solutions.face_mesh
     with mp_face_mesh.FaceMesh(static_image_mode=True) as face_mesh:
@@ -43,10 +50,30 @@ def find_midline(img):
         if not results.multi_face_landmarks:
             raise Exception("❌ No face detected with Mediapipe")
         landmarks = results.multi_face_landmarks[0].landmark
-        left_eye_x = int(landmarks[33].x * W)
-        right_eye_x = int(landmarks[263].x * W)
-        midline_x = (left_eye_x + right_eye_x) // 2
-    print(f"ℹ️ Midline at x = {midline_x}")
+        
+        # Key facial landmarks for midline calculation
+        # Forehead center (top of face)
+        forehead_x = int(landmarks[10].x * W)  # Top of forehead
+        
+        # Eye center (between left and right eye)
+        left_eye_x = int(landmarks[33].x * W)   # Left eye center
+        right_eye_x = int(landmarks[263].x * W) # Right eye center
+        eye_center_x = (left_eye_x + right_eye_x) // 2
+        
+        # Nose center (nose tip)
+        nose_x = int(landmarks[1].x * W)  # Nose tip
+        
+        # Mouth center (between left and right mouth corners)
+        left_mouth_x = int(landmarks[61].x * W)  # Left mouth corner
+        right_mouth_x = int(landmarks[291].x * W) # Right mouth corner
+        mouth_center_x = (left_mouth_x + right_mouth_x) // 2
+        
+        # Calculate midline as average of all key points
+        midline_x = (forehead_x + eye_center_x + nose_x + mouth_center_x) // 4
+        
+    print(f"ℹ️ Face midline calculated from landmarks:")
+    print(f"   Forehead: {forehead_x}, Eye center: {eye_center_x}, Nose: {nose_x}, Mouth: {mouth_center_x}")
+    print(f"   Final midline: x = {midline_x}")
     return midline_x
 
 
@@ -289,7 +316,7 @@ def generate_contour_mesh(contour: np.ndarray, H: int, W: int, mesh_density_fact
 
 def generate_voronoi_diagram(points, H, W, contour):
     """
-    Generate Voronoi diagram from mesh points only (excluding contour points), constrained to person boundary.
+    Generate Voronoi diagram from mesh points (excluding boundary points), constrained to person boundary.
     Returns list of Voronoi edges.
     """
     from scipy.spatial import Voronoi
@@ -301,18 +328,19 @@ def generate_voronoi_diagram(points, H, W, contour):
     points_img = points * max_dim
     points_img[:, 1] = H - points_img[:, 1]
     
-    # Filter out points that are too close to contour boundary
+    # Use all mesh points - the mesher already gives us proper mesh points
+    # Only filter out points that are exactly on the contour (distance == 0)
     filtered_points = []
     if contour is not None and len(contour) > 0:
         for pt in points_img:
-            is_on_contour = False
+            is_exactly_on_contour = False
             for contour_pt in contour:
                 dist = np.sqrt((pt[0] - contour_pt[0])**2 + (pt[1] - contour_pt[1])**2)
-                if dist < 15:  # 15 pixel tolerance to exclude contour points
-                    is_on_contour = True
+                if dist == 0:  # Exact match - only contour points
+                    is_exactly_on_contour = True
                     break
             
-            if not is_on_contour:
+            if not is_exactly_on_contour:
                 filtered_points.append(pt)
     else:
         filtered_points = points_img.tolist()
@@ -408,22 +436,22 @@ def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, 
     
     # === Draw mesh nodes as bigger dots if requested ===
     if show_mesh_nodes:
-        # ONLY draw nodes from the contour mesh (Mesh B) - NOT contour boundary points
+        # ONLY draw nodes from the contour mesh (Mesh B) - exclude boundary points
         if contour_mesh_points is not None:
             contour_mesh_points_img = contour_mesh_points * max_dim
             contour_mesh_points_img[:,1] = H - contour_mesh_points_img[:,1]
             for pt in contour_mesh_points_img:
-                # Only draw if point is well inside the boundary (not on contour)
-                is_on_contour = False
+                # Only filter out points that are exactly on the contour (distance == 0)
+                is_exactly_on_contour = False
                 if len(contour) > 0:
                     for contour_pt in contour:
                         dist = np.sqrt((pt[0] - contour_pt[0])**2 + (pt[1] - contour_pt[1])**2)
-                        if dist < 10:  # 10 pixel tolerance
-                            is_on_contour = True
+                        if dist == 0:  # Exact match - only contour points
+                            is_exactly_on_contour = True
                             break
                 
-                if not is_on_contour:
-                    cv2.circle(overlay, tuple(pt.astype(int)), 6, (0,255,0), -1)  # Green dots
+                if not is_exactly_on_contour:
+                    cv2.circle(overlay, tuple(pt.astype(int)), 6, (0,0,0), -1)  # Black dots
 
     # === Draw contour ===
     if len(contour) > 0 and not hide_contour_outline:
@@ -441,7 +469,7 @@ def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, 
             pts = contour_mesh_points_img[tri].astype(int)
             # Only draw if triangle is within cutoff
             if np.all(pts[:,0] <= cutoff_x+10):
-                cv2.polylines(overlay, [pts], True, (0,0,0), 2)  # Red contour mesh
+                cv2.polylines(overlay, [pts], True, (0,0,0), 3)  # Thicker triangle lines
     
     # === Draw Voronoi diagram if requested ===
     if show_voronoi:
@@ -455,7 +483,7 @@ def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, 
                     # Convert to int coordinates
                     pt1_int = (int(pt1[0]), int(pt1[1]))
                     pt2_int = (int(pt2[0]), int(pt2[1]))
-                    cv2.line(overlay, pt1_int, pt2_int, (0, 0, 0), 1)  # Black thin lines
+                    cv2.line(overlay, pt1_int, pt2_int, (0, 0, 0), 2)  # Black thicker lines
         except Exception as e:
             print(f"⚠️ Could not generate Voronoi diagram: {e}")
 
@@ -660,13 +688,18 @@ def main():
                        help='Show Voronoi diagram with thin lines')
     parser.add_argument('--hide-contour-outline', action='store_true',
                        help='Hide the contour outline (only show mesh nodes)')
+    parser.add_argument('--use-face-midline', action='store_true',
+                       help='Use exact face midline (forehead to nose center) instead of image center cutoff')
     args = parser.parse_args()
     
     IMAGE_PATH = args.input_image
     
     # Generate unique filenames based on input image and cutoff position
     base_name = os.path.splitext(os.path.basename(IMAGE_PATH))[0]
-    cutoff_suffix = f"_cutoff{int(args.cutoff_position*100):03d}"
+    if args.use_face_midline:
+        cutoff_suffix = "_face_midline"
+    else:
+        cutoff_suffix = f"_cutoff{int(args.cutoff_position*100):03d}"
     IN2D_FILE = os.path.join(OUTPUT_DIR, f"{base_name}_mesh_normalized_subsampled.in2d")
     MESH_FILE = os.path.join(OUTPUT_DIR, f"{base_name}_out.mesh.vol.gz")
     SOLUTION_PATH = os.path.join(OUTPUT_DIR, f"{base_name}_solution.txt")
@@ -685,12 +718,22 @@ def main():
     print(f"📐 Image dimensions: {W}x{H}")
 
     net = load_bisenet()
-    # midline_x = find_midline(img)
     mask = segment_face(net, img)
     
     # Calculate cutoff position
-    cutoff_x = int(args.cutoff_position * W)
-    print(f"ℹ️ Cutoff position: x = {cutoff_x} ({args.cutoff_position*100:.1f}% of image width)")
+    if args.use_face_midline:
+        try:
+            midline_x = find_midline(img)
+            cutoff_x = midline_x
+            print(f"ℹ️ Using face midline: x = {cutoff_x}")
+        except Exception as e:
+            print(f"⚠️ Face midline detection failed: {e}")
+            print("🔄 Falling back to image center cutoff")
+            cutoff_x = int(args.cutoff_position * W)
+            print(f"ℹ️ Cutoff position: x = {cutoff_x} ({args.cutoff_position*100:.1f}% of image width)")
+    else:
+        cutoff_x = int(args.cutoff_position * W)
+        print(f"ℹ️ Cutoff position: x = {cutoff_x} ({args.cutoff_position*100:.1f}% of image width)")
     
     contour = extract_contour(mask, cutoff_x)
 
