@@ -91,11 +91,27 @@ Examples: `input_03_overlay_color_alpha60.png` for alpha=0.6. When using face mi
   </table>
 
 ### Face Segmentation Configuration
-The pipeline uses BiSeNet with 19 face parsing classes from the CelebAMask-HQ dataset. The current configuration includes:
-- **Included**: Skin, eyebrows, eyes, glasses, right ear, earring, nose, mouth, lips, hair, hat
-- **Excluded**: Left ear, neck, necklace, clothing
+The pipeline uses BiSeNet with 19 face parsing classes from CelebAMask-HQ and now supports label presets and overrides:
 
-You can modify `LABELS_TO_KEEP` in `main.py` to adjust which facial regions are included in the segmentation.
+Presets:
+- `full` (default): includes neck, necklace, clothing
+- `face`: excludes neck (14), necklace (15), clothing (16)
+
+Use a preset:
+```bash
+python main.py inputs/input_03.png --segmentation-mode face
+```
+
+Override labels explicitly (comma-separated list of class IDs):
+```bash
+python main.py inputs/input_03.png --labels-to-keep "1,2,3,4,6,7,8,10,11,12,13,14,15,16,17,18"
+```
+
+Notes:
+- Class IDs (BiSeNet 19-class):
+  - 0: Background, 1: Skin, 2: Left Brow, 3: Right Brow, 4: Left Eye, 5: Right Eye
+  - 6: Glasses, 7: Left Ear, 8: Right Ear, 9: Ear Ring, 10: Nose, 11: Mouth
+  - 12: Upper Lip, 13: Lower Lip, 14: Neck, 15: Necklace, 16: Cloth, 17: Hair, 18: Hat
 
 ### Implementation Notes
 - Mesh generation uses Gmsh (Python API) with Frontal-Delaunay for quality triangulation constrained to the face contour.

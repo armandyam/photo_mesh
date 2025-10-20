@@ -17,6 +17,11 @@ WEIGHTS_PATH = "79999_iter.pth"
 # 12: Upper Lip, 13: Lower Lip, 14: Neck, 15: Necklace, 16: Cloth, 17: Hair, 18: Hat
 # Full body extraction: including neck, clothing, and all facial features
 LABELS_TO_KEEP = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+# Presets:
+# - full: includes neck and clothing (current default)
+# - face: excludes neck (14), necklace (15), and clothing (16)
+LABELS_PRESET_FULL = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+LABELS_PRESET_FACE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 17, 18]
 MODEL_INPUT_SIZE = 512
 SUBSAMPLE_N = 20
 
@@ -77,7 +82,7 @@ def find_midline(img):
     return midline_x
 
 
-def segment_face(net, img):
+def segment_face(net, img, labels_to_keep):
     H, W = img.shape[:2]
     to_tensor = transforms.Compose([
         transforms.ToPILImage(),
@@ -90,7 +95,7 @@ def segment_face(net, img):
         out = net(inp)[0]
         parsing = out.squeeze(0).argmax(0).cpu().numpy()
     parsing = cv2.resize(parsing, (W, H), interpolation=cv2.INTER_NEAREST)
-    mask = np.isin(parsing, LABELS_TO_KEEP).astype(np.uint8) * 255
+    mask = np.isin(parsing, labels_to_keep).astype(np.uint8) * 255
     return mask
 
 
@@ -690,6 +695,10 @@ def main():
                        help='Hide the contour outline (only show mesh nodes)')
     parser.add_argument('--use-face-midline', action='store_true',
                        help='Use exact face midline (forehead to nose center) instead of image center cutoff')
+    parser.add_argument('--segmentation-mode', choices=['full','face'], default='full',
+                       help='Segmentation preset: full (includes neck/clothing) or face (excludes them)')
+    parser.add_argument('--labels-to-keep', type=str, default=None,
+                       help='Override labels as comma-separated integers, e.g. "1,2,3,4,6,7,8,10,11,12,13,14,15,16,17,18"')
     args = parser.parse_args()
     
     IMAGE_PATH = args.input_image
@@ -717,8 +726,22 @@ def main():
     H, W = img.shape[:2]
     print(f"📐 Image dimensions: {W}x{H}")
 
+    # Determine segmentation labels
+    if args.labels_to_keep is not None:
+        try:
+            labels_to_keep = [int(x.strip()) for x in args.labels_to_keep.split(',') if x.strip()]
+        except Exception:
+            raise ValueError("Invalid --labels-to-keep format. Use comma-separated integers, e.g. 1,2,3")
+        print(f"🎯 Using custom labels_to_keep: {labels_to_keep}")
+    else:
+        if args.segmentation_mode == 'face':
+            labels_to_keep = LABELS_PRESET_FACE
+        else:
+            labels_to_keep = LABELS_PRESET_FULL
+        print(f"🎯 Using segmentation preset '{args.segmentation_mode}': {labels_to_keep}")
+
     net = load_bisenet()
-    mask = segment_face(net, img)
+    mask = segment_face(net, img, labels_to_keep)
     
     # Calculate cutoff position
     if args.use_face_midline:
