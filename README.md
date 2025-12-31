@@ -3,8 +3,8 @@
 Extract a face contour from a photo, generate a 2D triangular mesh with Gmsh, and overlay a synthetic PDE solution on the face region.
 
 ### Features
-- Face parsing with BiSeNet (pretrained weights) - face-only segmentation excluding neck, clothing, and left ear
-- Midline detection with MediaPipe FaceMesh
+- Face parsing with BiSeNet (pretrained weights) - configurable segmentation (face-only or full body)
+- **Angled face midline detection** - automatically calculates midline from segmentation mask that follows face orientation (works for tilted faces)
 - 2D mesh generation from the face contour (Gmsh)
 - Synthetic PDE visualization and image-colored mesh overlays
 - Clean input/output separation (`inputs/` → `output/`)
@@ -45,26 +45,46 @@ Place the downloaded `79999_iter.pth` in the project root before running.
 Run the pipeline on an input image (with optional alpha):
 ```bash
 source venv/bin/activate
-python main.py inputs/input_01.jpg --alpha 0.45
+python main.py inputs/input_01.jpg --alpha 0.6
 ```
 
-#### Cutoff options
-- Use image-wide cutoff (default at 50% of image width):
+#### Face Midline
+The pipeline **automatically calculates an angled face midline** from the segmentation mask that follows the face orientation. This works for both front-facing and tilted faces:
+- Calculates midline using face center points at different heights (forehead, nose, chin)
+- Extends the line to image boundaries
+- Automatically handles face tilt/rotation
+
+If midline detection fails, the code falls back to a vertical cutoff at the image center.
+
+#### Advanced Options
+- Adjust cutoff position (fallback only, if midline detection fails):
 ```bash
 python main.py inputs/input_03.png --cutoff-position 0.5 --alpha 0.6
 ```
-- Use exact face midline (forehead/eyes/nose/mouth landmarks via MediaPipe):
+- Legacy flag (now always uses angled midline):
 ```bash
 python main.py inputs/input_03.png --use-face-midline --alpha 0.6
 ```
-
-If `--use-face-midline` fails to detect a face, the code falls back to the `--cutoff-position` fraction of image width.
 
 Outputs are written to `output/` with meaningful names that include alpha (percent):
 - `<name>_overlay_color_alphaXX.png` (color background)
 - `<name>_overlay_gray_alphaXX.png` (grayscale background)
 
-Examples: `input_03_overlay_color_alpha60.png` for alpha=0.6. When using face midline, filenames include `_face_midline`.
+Examples: `input_03_overlay_color_alpha60.png` for alpha=0.6.
+
+#### Additional Visualization Options
+- Show mesh nodes as dots:
+```bash
+python main.py inputs/input_03.png --show-mesh-nodes --alpha 0.6
+```
+- Show Voronoi diagram:
+```bash
+python main.py inputs/input_03.png --show-voronoi --alpha 0.6
+```
+- Use different (coarser) mesh for contour visualization:
+```bash
+python main.py inputs/input_03.png --use-different-contour-mesh --alpha 0.6
+```
 
 ### Examples
 
@@ -91,15 +111,19 @@ Examples: `input_03_overlay_color_alpha60.png` for alpha=0.6. When using face mi
   </table>
 
 ### Face Segmentation Configuration
-The pipeline uses BiSeNet with 19 face parsing classes from CelebAMask-HQ and now supports label presets and overrides:
+The pipeline uses BiSeNet with 19 face parsing classes from CelebAMask-HQ and supports label presets and overrides:
 
 Presets:
-- `full` (default): includes neck, necklace, clothing
-- `face`: excludes neck (14), necklace (15), clothing (16)
+- `face` (default): excludes neck (14), necklace (15), clothing (16) - **only meshes the face region**
+- `full`: includes neck, necklace, clothing
 
 Use a preset:
 ```bash
-python main.py inputs/input_03.png --segmentation-mode face
+# Default is 'face' mode
+python main.py inputs/input_03.png --alpha 0.6
+
+# Use full body segmentation
+python main.py inputs/input_03.png --segmentation-mode full --alpha 0.6
 ```
 
 Override labels explicitly (comma-separated list of class IDs):
@@ -114,11 +138,14 @@ Notes:
   - 12: Upper Lip, 13: Lower Lip, 14: Neck, 15: Necklace, 16: Cloth, 17: Hair, 18: Hat
 
 ### Implementation Notes
+- **Angled midline calculation**: The midline is calculated from the segmentation mask itself by finding the center of mass at different vertical positions (forehead ~25%, nose ~50%, chin ~75%). This approach works reliably for both front-facing and tilted faces without requiring external landmark detection.
 - Mesh generation uses Gmsh (Python API) with Frontal-Delaunay for quality triangulation constrained to the face contour.
 - Only two images are written to `output/`: `<name>_overlay_color_alphaXX.png` and `<name>_overlay_gray_alphaXX.png`.
 - The visualization uses actual image colors mapped to the JET colormap (hot-to-cool) for meaningful data representation.
+- The cutoff line is angled and follows the face orientation, ensuring proper segmentation even for tilted faces.
 
 ### Troubleshooting
-- If MediaPipe cannot detect a face, ensure the image has a clear, frontal face.
-- If Gmsh import fails, upgrade pip and retry: `pip install -U gmsh`. Ensure you run inside the venv’s Python.
+- If midline detection fails, the code automatically falls back to a vertical cutoff at the image center.
+- If Gmsh import fails, upgrade pip and retry: `pip install -U gmsh`. Ensure you run inside the venv's Python.
+- For best results, ensure the face is clearly visible in the image and the segmentation mask captures the face region properly.
 
