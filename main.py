@@ -40,46 +40,143 @@ def load_bisenet():
     return net
 
 
-def find_midline(img):
+def find_midline_from_mask(mask):
     """
-    Find the exact face midline using multiple facial landmarks:
-    - Forehead center (top of face)
-    - Nose center (nose tip)
-    - Eye center (between left and right eye)
-    - Mouth center (between left and right mouth corners)
+    Find the face midline from the segmentation mask by finding the center of mass
+    at different vertical positions (top, middle, bottom).
+    Returns a line as two points (top, bottom).
+    """
+    H, W = mask.shape
+    
+    # Find the bounding box of the face
+    coords = np.column_stack(np.where(mask > 0))
+    if len(coords) == 0:
+        raise Exception("❌ No face region found in mask")
+    
+    y_min, x_min = coords.min(axis=0)
+    y_max, x_max = coords.max(axis=0)
+    
+    # Sample at three vertical positions: top (25%), middle (50%), bottom (75%)
+    y_top = int(y_min + (y_max - y_min) * 0.25)
+    y_mid = int(y_min + (y_max - y_min) * 0.50)
+    y_bottom = int(y_min + (y_max - y_min) * 0.75)
+    
+    # Find center of mass at each vertical position
+    def get_center_x_at_y(y):
+        row = mask[y, :]
+        x_coords = np.where(row > 0)[0]
+        if len(x_coords) > 0:
+            return int(np.mean(x_coords))
+        return W // 2
+    
+    face_mid_x = get_center_x_at_y(y_top)
+    face_mid_y = y_top
+    
+    nose_mid_x = get_center_x_at_y(y_mid)
+    nose_mid_y = y_mid
+    
+    chin_mid_x = get_center_x_at_y(y_bottom)
+    chin_mid_y = y_bottom
+    
+    return (face_mid_x, face_mid_y), (nose_mid_x, nose_mid_y), (chin_mid_x, chin_mid_y)
+
+def find_midline(img, mask=None):
+    """
+    Find the face midline as an angled line that follows the face orientation.
+    Uses three key points: face mid (forehead), nose mid, and chin mid.
+    Returns a line as two points (top, bottom) that can extend beyond image bounds.
+    
+    If mask is provided, uses the mask to calculate midline. Otherwise tries MediaPipe.
     """
     H, W = img.shape[:2]
-    mp_face_mesh = mp.solutions.face_mesh
-    with mp_face_mesh.FaceMesh(static_image_mode=True) as face_mesh:
-        results = face_mesh.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        if not results.multi_face_landmarks:
-            raise Exception("❌ No face detected with Mediapipe")
-        landmarks = results.multi_face_landmarks[0].landmark
-        
-        # Key facial landmarks for midline calculation
-        # Forehead center (top of face)
-        forehead_x = int(landmarks[10].x * W)  # Top of forehead
-        
-        # Eye center (between left and right eye)
-        left_eye_x = int(landmarks[33].x * W)   # Left eye center
-        right_eye_x = int(landmarks[263].x * W) # Right eye center
-        eye_center_x = (left_eye_x + right_eye_x) // 2
-        
-        # Nose center (nose tip)
-        nose_x = int(landmarks[1].x * W)  # Nose tip
-        
-        # Mouth center (between left and right mouth corners)
-        left_mouth_x = int(landmarks[61].x * W)  # Left mouth corner
-        right_mouth_x = int(landmarks[291].x * W) # Right mouth corner
-        mouth_center_x = (left_mouth_x + right_mouth_x) // 2
-        
-        # Calculate midline as average of all key points
-        midline_x = (forehead_x + eye_center_x + nose_x + mouth_center_x) // 4
-        
-    print(f"ℹ️ Face midline calculated from landmarks:")
-    print(f"   Forehead: {forehead_x}, Eye center: {eye_center_x}, Nose: {nose_x}, Mouth: {mouth_center_x}")
-    print(f"   Final midline: x = {midline_x}")
-    return midline_x
+    
+    # If mask is provided, use it to calculate midline
+    if mask is not None:
+        try:
+            face_mid, nose_mid, chin_mid = find_midline_from_mask(mask)
+            face_mid_x, face_mid_y = face_mid
+            nose_mid_x, nose_mid_y = nose_mid
+            chin_mid_x, chin_mid_y = chin_mid
+        except Exception as e:
+            raise Exception(f"❌ Failed to find midline from mask: {e}")
+    else:
+        # Try MediaPipe (may not work with new API)
+        try:
+            from mediapipe.tasks.python import vision
+            from mediapipe import tasks
+            
+            base_options = tasks.BaseOptions()
+            options = vision.FaceLandmarkerOptions(
+                base_options=base_options,
+                output_face_blendshapes=False,
+                output_facial_transformation_matrixes=False,
+                num_faces=1
+            )
+            detector = vision.FaceLandmarker.create_from_options(options)
+            
+            mp_image = vision.TaskRunner.Image.create_from_array(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+            detection_result = detector.detect(mp_image)
+            
+            if not detection_result.face_landmarks or len(detection_result.face_landmarks) == 0:
+                raise Exception("❌ No face detected with Mediapipe")
+            
+            landmarks = detection_result.face_landmarks[0]
+            face_mid_x = landmarks[10].x * W
+            face_mid_y = landmarks[10].y * H
+            nose_mid_x = landmarks[1].x * W
+            nose_mid_y = landmarks[1].y * H
+            chin_mid_x = landmarks[175].x * W
+            chin_mid_y = landmarks[175].y * H
+        except Exception as e:
+            raise Exception(f"❌ MediaPipe face detection failed: {e}")
+    
+    # Fit a line through these three points using least squares
+    # We'll use the top (face_mid) and bottom (chin_mid) points and extend
+    top_point = np.array([face_mid_x, face_mid_y])
+    bottom_point = np.array([chin_mid_x, chin_mid_y])
+    
+    # Calculate line direction
+    direction = bottom_point - top_point
+    direction_norm = np.linalg.norm(direction)
+    if direction_norm > 0:
+        direction = direction / direction_norm
+    else:
+        # Fallback: vertical line
+        direction = np.array([0.0, 1.0])
+    
+    # Extend line to image boundaries
+    # We want to extend from top_point upward and from bottom_point downward
+    # Calculate parameter t where y = top_point[1] + t * direction[1]
+    
+    # Extend upward from top_point
+    if direction[1] != 0:
+        t_top = (0 - top_point[1]) / direction[1]  # y = 0
+    else:
+        t_top = 0
+    
+    # Extend downward from bottom_point
+    if direction[1] != 0:
+        t_bottom = (H - bottom_point[1]) / direction[1]  # y = H
+    else:
+        t_bottom = H - bottom_point[1]
+    
+    # Calculate extended points
+    line_top = top_point + direction * t_top
+    line_bottom = bottom_point + direction * t_bottom
+    
+    # Ensure points are within reasonable bounds (allow extension beyond image)
+    line_top[0] = np.clip(line_top[0], -W, 2*W)
+    line_top[1] = np.clip(line_top[1], -H, 2*H)
+    line_bottom[0] = np.clip(line_bottom[0], -W, 2*W)
+    line_bottom[1] = np.clip(line_bottom[1], -H, 2*H)
+    
+    print(f"ℹ️ Face midline calculated:")
+    print(f"   Face mid (top): ({face_mid_x:.1f}, {face_mid_y:.1f})")
+    print(f"   Nose mid: ({nose_mid_x:.1f}, {nose_mid_y:.1f})")
+    print(f"   Chin mid (bottom): ({chin_mid_x:.1f}, {chin_mid_y:.1f})")
+    print(f"   Line: ({line_top[0]:.1f}, {line_top[1]:.1f}) -> ({line_bottom[0]:.1f}, {line_bottom[1]:.1f})")
+    
+    return (line_top, line_bottom)
 
 
 def segment_face(net, img, labels_to_keep):
@@ -99,19 +196,42 @@ def segment_face(net, img, labels_to_keep):
     return mask
 
 
-def extract_contour(mask, cutoff_x):
+def extract_contour(mask, cutoff_line=None, cutoff_x=None):
     """
     Extract contour with configurable cutoff position.
     
     Args:
         mask: Segmentation mask
-        cutoff_x: X coordinate for cutoff line
+        cutoff_line: Tuple of (line_top, line_bottom) points defining an angled cutoff line
+        cutoff_x: X coordinate for vertical cutoff line (for backward compatibility)
     """
     H, W = mask.shape
     
-    # Create mask for everything to the left of cutoff line
-    mask_left = np.zeros_like(mask)
-    mask_left[:, :cutoff_x] = mask[:, :cutoff_x]
+    # Determine which side of the line to keep (left side)
+    if cutoff_line is not None:
+        line_top, line_bottom = cutoff_line
+        # Create a function to determine which side of the line a point is on
+        # Using cross product: if cross > 0, point is on left side
+        line_vec = line_bottom - line_top
+        
+        def is_left_of_line(point):
+            """Check if point is on the left side of the line"""
+            point_vec = point - line_top
+            cross = line_vec[0] * point_vec[1] - line_vec[1] * point_vec[0]
+            return cross > 0
+        
+        # Create mask for everything on the left side of the line
+        mask_left = np.zeros_like(mask)
+        for y in range(H):
+            for x in range(W):
+                if mask[y, x] > 0:
+                    if is_left_of_line(np.array([x, y])):
+                        mask_left[y, x] = mask[y, x]
+    else:
+        # Fallback to vertical line
+        cutoff_x = cutoff_x if cutoff_x is not None else W // 2
+        mask_left = np.zeros_like(mask)
+        mask_left[:, :cutoff_x] = mask[:, :cutoff_x]
     
     contours, _ = cv2.findContours(mask_left, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     
@@ -121,23 +241,52 @@ def extract_contour(mask, cutoff_x):
     largest = max(contours, key=cv2.contourArea)
     contour = largest[:, 0, :]
 
-    x_vals, y_vals = contour[:, 0], contour[:, 1]
-    bump_mask = (x_vals >= cutoff_x)
-
-    if np.any(bump_mask):
-        y_top_bump = np.min(y_vals[bump_mask])
-        y_bottom_bump = np.max(y_vals[bump_mask])
+    # Clip contour points that are on the right side of the line to the line
+    if cutoff_line is not None:
+        line_top, line_bottom = cutoff_line
+        line_vec = line_bottom - line_top
+        
+        def is_left_of_line(point):
+            point_vec = point - line_top
+            cross = line_vec[0] * point_vec[1] - line_vec[1] * point_vec[0]
+            return cross > 0
+        
+        def project_to_line(point):
+            """Project point onto the line and return the closest point on the line"""
+            point_vec = point - line_top
+            t = np.dot(point_vec, line_vec) / np.dot(line_vec, line_vec)
+            t = np.clip(t, 0, 1)
+            return line_top + t * line_vec
+        
+        new_contour = []
+        for pt in contour:
+            if is_left_of_line(pt):
+                new_contour.append(pt)
+            else:
+                # Project to line
+                projected = project_to_line(pt)
+                new_contour.append(projected.astype(int))
+        
+        return np.array(new_contour, dtype=int)
     else:
-        y_top_bump, y_bottom_bump = np.min(y_vals), np.max(y_vals)
+        # Original vertical line logic
+        x_vals, y_vals = contour[:, 0], contour[:, 1]
+        bump_mask = (x_vals >= cutoff_x)
 
-    new_contour = []
-    for x, y in contour:
-        if y_top_bump <= y <= y_bottom_bump and x >= cutoff_x:
-            new_contour.append([cutoff_x, y])
+        if np.any(bump_mask):
+            y_top_bump = np.min(y_vals[bump_mask])
+            y_bottom_bump = np.max(y_vals[bump_mask])
         else:
-            new_contour.append([x, y])
+            y_top_bump, y_bottom_bump = np.min(y_vals), np.max(y_vals)
 
-    return np.array(new_contour, dtype=int)
+        new_contour = []
+        for x, y in contour:
+            if y_top_bump <= y <= y_bottom_bump and x >= cutoff_x:
+                new_contour.append([cutoff_x, y])
+            else:
+                new_contour.append([x, y])
+
+        return np.array(new_contour, dtype=int)
 
 
 def save_contour_and_image(img, contour, base_name):
@@ -398,9 +547,16 @@ def generate_voronoi_diagram(points, H, W, contour):
     return voronoi_edges
 
 
-def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, alpha=0.3, cutoff_x=None, separate_contour_mesh=False, contour_mesh_points=None, contour_mesh_triangles=None, show_mesh_nodes=False, show_voronoi=False, hide_contour_outline=False):
+def is_point_left_of_line(point, line_top, line_bottom):
+    """Check if a point is on the left side of a line"""
+    line_vec = line_bottom - line_top
+    point_vec = point - line_top
+    cross = line_vec[0] * point_vec[1] - line_vec[1] * point_vec[0]
+    return cross > 0
+
+def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, alpha=0.3, cutoff_x=None, cutoff_line=None, separate_contour_mesh=False, contour_mesh_points=None, contour_mesh_triangles=None, show_mesh_nodes=False, show_voronoi=False, hide_contour_outline=False):
     H, W = img.shape[:2]
-    if cutoff_x is None:
+    if cutoff_x is None and cutoff_line is None:
         cutoff_x = W // 2
     max_dim = max(W, H)
 
@@ -423,8 +579,15 @@ def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, 
         color = cv2.applyColorMap(np.uint8([[color_val*255]]), cv2.COLORMAP_JET)[0,0,:].tolist()
 
         # Only draw left of cutoff line
-        if np.all(pts[:,0] <= cutoff_x+10):
-            cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
+        if cutoff_line is not None:
+            # Check if triangle center is on left side of line
+            tri_center = np.mean(pts, axis=0)
+            line_top, line_bottom = cutoff_line
+            if is_point_left_of_line(tri_center, line_top, line_bottom):
+                cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
+        else:
+            if np.all(pts[:,0] <= cutoff_x+10):
+                cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
 
     # Blend only the triangle_layer with original photo
     mask = (triangle_layer > 0).any(axis=2)
@@ -473,8 +636,14 @@ def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, 
         for tri in contour_mesh_triangles:
             pts = contour_mesh_points_img[tri].astype(int)
             # Only draw if triangle is within cutoff
-            if np.all(pts[:,0] <= cutoff_x+10):
-                cv2.polylines(overlay, [pts], True, (0,0,0), 3)  # Thicker triangle lines
+            if cutoff_line is not None:
+                tri_center = np.mean(pts, axis=0)
+                line_top, line_bottom = cutoff_line
+                if is_point_left_of_line(tri_center, line_top, line_bottom):
+                    cv2.polylines(overlay, [pts], True, (0,0,0), 3)  # Thicker triangle lines
+            else:
+                if np.all(pts[:,0] <= cutoff_x+10):
+                    cv2.polylines(overlay, [pts], True, (0,0,0), 3)  # Thicker triangle lines
     
     # === Draw Voronoi diagram if requested ===
     if show_voronoi:
@@ -615,10 +784,11 @@ def overlay_on_image(
     alpha=1.,
     mode="dat",
     base_name="output",
-    cutoff_x=None
+    cutoff_x=None,
+    cutoff_line=None
 ):
     H,W = img.shape[:2]
-    if cutoff_x is None:
+    if cutoff_x is None and cutoff_line is None:
         cutoff_x = W//2
     max_dim = max(W,H)
 
@@ -640,8 +810,14 @@ def overlay_on_image(
             for tri in fine_tris:
                 pts = fine_points_img[tri].astype(int)
                 color = np.mean(fine_colors[tri], axis=0).astype(int).tolist()
-                if np.any(pts[:,0]<=cutoff_x+10):
-                    cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
+                if cutoff_line is not None:
+                    tri_center = np.mean(pts, axis=0)
+                    line_top, line_bottom = cutoff_line
+                    if is_point_left_of_line(tri_center, line_top, line_bottom):
+                        cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
+                else:
+                    if np.any(pts[:,0]<=cutoff_x+10):
+                        cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
 
     elif mode == "solution":
         sol_norm = (solution - np.min(solution)) / (np.max(solution)-np.min(solution)+1e-8)
@@ -649,8 +825,14 @@ def overlay_on_image(
             pts = coarse_points_img[tri].astype(int)
             color_val = np.mean(sol_norm[tri])
             color = cv2.applyColorMap(np.uint8([[color_val*255]]), cv2.COLORMAP_JET)[0,0,:].tolist()
-            if np.any(pts[:,0]<=cutoff_x+10):
-                cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
+            if cutoff_line is not None:
+                tri_center = np.mean(pts, axis=0)
+                line_top, line_bottom = cutoff_line
+                if is_point_left_of_line(tri_center, line_top, line_bottom):
+                    cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
+            else:
+                if np.any(pts[:,0]<=cutoff_x+10):
+                    cv2.fillConvexPoly(triangle_layer, pts, color, lineType=cv2.LINE_AA)
 
     # Blend
     mask = (triangle_layer>0).any(axis=2)
@@ -695,7 +877,7 @@ def main():
                        help='Hide the contour outline (only show mesh nodes)')
     parser.add_argument('--use-face-midline', action='store_true',
                        help='Use exact face midline (forehead to nose center) instead of image center cutoff')
-    parser.add_argument('--segmentation-mode', choices=['full','face'], default='full',
+    parser.add_argument('--segmentation-mode', choices=['full','face'], default='face',
                        help='Segmentation preset: full (includes neck/clothing) or face (excludes them)')
     parser.add_argument('--labels-to-keep', type=str, default=None,
                        help='Override labels as comma-separated integers, e.g. "1,2,3,4,6,7,8,10,11,12,13,14,15,16,17,18"')
@@ -703,12 +885,8 @@ def main():
     
     IMAGE_PATH = args.input_image
     
-    # Generate unique filenames based on input image and cutoff position
+    # Generate unique filenames based on input image
     base_name = os.path.splitext(os.path.basename(IMAGE_PATH))[0]
-    if args.use_face_midline:
-        cutoff_suffix = "_face_midline"
-    else:
-        cutoff_suffix = f"_cutoff{int(args.cutoff_position*100):03d}"
     IN2D_FILE = os.path.join(OUTPUT_DIR, f"{base_name}_mesh_normalized_subsampled.in2d")
     MESH_FILE = os.path.join(OUTPUT_DIR, f"{base_name}_out.mesh.vol.gz")
     SOLUTION_PATH = os.path.join(OUTPUT_DIR, f"{base_name}_solution.txt")
@@ -743,22 +921,20 @@ def main():
     net = load_bisenet()
     mask = segment_face(net, img, labels_to_keep)
     
-    # Calculate cutoff position
-    if args.use_face_midline:
-        try:
-            midline_x = find_midline(img)
-            cutoff_x = midline_x
-            print(f"ℹ️ Using face midline: x = {cutoff_x}")
-        except Exception as e:
-            print(f"⚠️ Face midline detection failed: {e}")
-            print("🔄 Falling back to image center cutoff")
-            cutoff_x = int(args.cutoff_position * W)
-            print(f"ℹ️ Cutoff position: x = {cutoff_x} ({args.cutoff_position*100:.1f}% of image width)")
-    else:
+    # Calculate cutoff position - always use angled face midline
+    cutoff_line = None
+    cutoff_x = None
+    try:
+        # Use the mask to calculate midline (more reliable than MediaPipe)
+        cutoff_line = find_midline(img, mask=mask)
+        print(f"ℹ️ Using angled face midline from segmentation mask")
+    except Exception as e:
+        print(f"⚠️ Face midline detection failed: {e}")
+        print("🔄 Falling back to image center cutoff")
         cutoff_x = int(args.cutoff_position * W)
         print(f"ℹ️ Cutoff position: x = {cutoff_x} ({args.cutoff_position*100:.1f}% of image width)")
     
-    contour = extract_contour(mask, cutoff_x)
+    contour = extract_contour(mask, cutoff_line=cutoff_line, cutoff_x=cutoff_x)
 
     # === Step 2: Pure-Python meshing from contour ===
     if len(contour) > 0:
@@ -777,7 +953,7 @@ def main():
             print(f"✅ Generated contour mesh: {len(contour_mesh_points)} nodes, {len(contour_mesh_triangles)} triangles")
 
         # Write only the two requested visualizations
-        draw_overlay_with_pde(cv2.imread(IMAGE_PATH), points, triangles, contour, solution, base_name + cutoff_suffix, alpha=max(0.0, min(1.0, args.alpha)), cutoff_x=cutoff_x, separate_contour_mesh=args.separate_contour_mesh, contour_mesh_points=contour_mesh_points, contour_mesh_triangles=contour_mesh_triangles, show_mesh_nodes=args.show_mesh_nodes, show_voronoi=args.show_voronoi, hide_contour_outline=args.hide_contour_outline)
+        draw_overlay_with_pde(cv2.imread(IMAGE_PATH), points, triangles, contour, solution, base_name, alpha=max(0.0, min(1.0, args.alpha)), cutoff_x=cutoff_x, cutoff_line=cutoff_line, separate_contour_mesh=args.separate_contour_mesh, contour_mesh_points=contour_mesh_points, contour_mesh_triangles=contour_mesh_triangles, show_mesh_nodes=args.show_mesh_nodes, show_voronoi=args.show_voronoi, hide_contour_outline=args.hide_contour_outline)
 
         # Second visualization (solution on coarse mesh)
         coarse_points = points
@@ -786,7 +962,7 @@ def main():
         overlay_on_image(
             img, coarse_points, coarse_triangles,
             solution=solution,
-            contour=contour, alpha=max(0.0, min(1.0, args.alpha)), mode="solution", base_name=base_name + cutoff_suffix, cutoff_x=cutoff_x
+            contour=contour, alpha=max(0.0, min(1.0, args.alpha)), mode="solution", base_name=base_name, cutoff_x=cutoff_x, cutoff_line=cutoff_line
         )
     else:
         print("ℹ️ No contour generated (0% cutoff) - saving original image")
