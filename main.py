@@ -230,8 +230,8 @@ def extract_contour(mask, cutoff_line=None, cutoff_x=None):
     else:
         # Fallback to vertical line
         cutoff_x = cutoff_x if cutoff_x is not None else W // 2
-        mask_left = np.zeros_like(mask)
-        mask_left[:, :cutoff_x] = mask[:, :cutoff_x]
+    mask_left = np.zeros_like(mask)
+    mask_left[:, :cutoff_x] = mask[:, :cutoff_x]
     
     contours, _ = cv2.findContours(mask_left, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     
@@ -554,7 +554,7 @@ def is_point_left_of_line(point, line_top, line_bottom):
     cross = line_vec[0] * point_vec[1] - line_vec[1] * point_vec[0]
     return cross > 0
 
-def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, alpha=0.3, cutoff_x=None, cutoff_line=None, separate_contour_mesh=False, contour_mesh_points=None, contour_mesh_triangles=None, show_mesh_nodes=False, show_voronoi=False, hide_contour_outline=False):
+def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, alpha=0.3, cutoff_x=None, cutoff_line=None, separate_contour_mesh=False, contour_mesh_points=None, contour_mesh_triangles=None, show_mesh_nodes=False, show_voronoi=False, hide_contour_outline=False, colormap=cv2.COLORMAP_PLASMA):
     H, W = img.shape[:2]
     if cutoff_x is None and cutoff_line is None:
         cutoff_x = W // 2
@@ -576,7 +576,8 @@ def draw_overlay_with_pde(img, points, triangles, contour, solution, base_name, 
     for tri in triangles:
         pts = points_img[tri].astype(int)
         color_val = np.mean(sol_norm[tri])
-        color = cv2.applyColorMap(np.uint8([[color_val*255]]), cv2.COLORMAP_JET)[0,0,:].tolist()
+        # Use specified colormap for overlay colors
+        color = cv2.applyColorMap(np.uint8([[color_val*255]]), colormap)[0,0,:].tolist()
 
         # Only draw left of cutoff line
         if cutoff_line is not None:
@@ -728,7 +729,7 @@ def generate_solution(points):
     return solution
 
 def extract_image_colors_at_points(points, img, H, W):
-    """Extract image colors at mesh points and convert to grayscale for JET colormap."""
+    """Extract image colors at mesh points and convert to grayscale for colormap."""
     max_dim = max(W, H)
     
     # Convert points back to image coordinates
@@ -767,7 +768,7 @@ def extract_image_colors_at_points(points, img, H, W):
     
     colors = np.array(colors, dtype=np.float32)
     
-    # Normalize to [0,1] for JET colormap
+    # Normalize to [0,1] for colormap
     colors = colors / 255.0
     
     return colors
@@ -785,7 +786,8 @@ def overlay_on_image(
     mode="dat",
     base_name="output",
     cutoff_x=None,
-    cutoff_line=None
+    cutoff_line=None,
+    colormap=cv2.COLORMAP_PLASMA
 ):
     H,W = img.shape[:2]
     if cutoff_x is None and cutoff_line is None:
@@ -824,7 +826,8 @@ def overlay_on_image(
         for tri in coarse_triangles:
             pts = coarse_points_img[tri].astype(int)
             color_val = np.mean(sol_norm[tri])
-            color = cv2.applyColorMap(np.uint8([[color_val*255]]), cv2.COLORMAP_JET)[0,0,:].tolist()
+            # Use specified colormap for overlay colors
+            color = cv2.applyColorMap(np.uint8([[color_val*255]]), colormap)[0,0,:].tolist()
             if cutoff_line is not None:
                 tri_center = np.mean(pts, axis=0)
                 line_top, line_bottom = cutoff_line
@@ -881,12 +884,46 @@ def main():
                        help='Segmentation preset: full (includes neck/clothing) or face (excludes them)')
     parser.add_argument('--labels-to-keep', type=str, default=None,
                        help='Override labels as comma-separated integers, e.g. "1,2,3,4,6,7,8,10,11,12,13,14,15,16,17,18"')
+    parser.add_argument('--colormap', type=str, default='plasma',
+                       choices=['autumn', 'bone', 'jet', 'winter', 'rainbow', 'ocean', 'summer', 'spring', 'cool', 'hsv', 'pink', 'hot', 'parula', 'magma', 'inferno', 'plasma', 'viridis', 'cividis', 'twilight', 'twilight_shifted', 'turbo', 'deepgreen'],
+                       help='Colormap to use for face overlay (default: plasma)')
     args = parser.parse_args()
+    
+    # Map colormap string to cv2 constant
+    colormap_map = {
+        'autumn': cv2.COLORMAP_AUTUMN,
+        'bone': cv2.COLORMAP_BONE,
+        'jet': cv2.COLORMAP_JET,
+        'winter': cv2.COLORMAP_WINTER,
+        'rainbow': cv2.COLORMAP_RAINBOW,
+        'ocean': cv2.COLORMAP_OCEAN,
+        'summer': cv2.COLORMAP_SUMMER,
+        'spring': cv2.COLORMAP_SPRING,
+        'cool': cv2.COLORMAP_COOL,
+        'hsv': cv2.COLORMAP_HSV,
+        'pink': cv2.COLORMAP_PINK,
+        'hot': cv2.COLORMAP_HOT,
+        'parula': cv2.COLORMAP_PARULA,
+        'magma': cv2.COLORMAP_MAGMA,
+        'inferno': cv2.COLORMAP_INFERNO,
+        'plasma': cv2.COLORMAP_PLASMA,
+        'viridis': cv2.COLORMAP_VIRIDIS,
+        'cividis': cv2.COLORMAP_CIVIDIS,
+        'twilight': cv2.COLORMAP_TWILIGHT,
+        'twilight_shifted': cv2.COLORMAP_TWILIGHT_SHIFTED,
+        'turbo': cv2.COLORMAP_TURBO,
+        'deepgreen': cv2.COLORMAP_DEEPGREEN
+    }
+    selected_colormap = colormap_map[args.colormap.lower()]
     
     IMAGE_PATH = args.input_image
     
-    # Generate unique filenames based on input image
+    # Generate unique filenames based on input image and cutoff position
     base_name = os.path.splitext(os.path.basename(IMAGE_PATH))[0]
+    if args.use_face_midline:
+        cutoff_suffix = "_face_midline"
+    else:
+        cutoff_suffix = f"_cutoff{int(args.cutoff_position*100):03d}"
     IN2D_FILE = os.path.join(OUTPUT_DIR, f"{base_name}_mesh_normalized_subsampled.in2d")
     MESH_FILE = os.path.join(OUTPUT_DIR, f"{base_name}_out.mesh.vol.gz")
     SOLUTION_PATH = os.path.join(OUTPUT_DIR, f"{base_name}_solution.txt")
@@ -924,13 +961,17 @@ def main():
     # Calculate cutoff position - always use angled face midline
     cutoff_line = None
     cutoff_x = None
-    try:
-        # Use the mask to calculate midline (more reliable than MediaPipe)
-        cutoff_line = find_midline(img, mask=mask)
-        print(f"ℹ️ Using angled face midline from segmentation mask")
-    except Exception as e:
-        print(f"⚠️ Face midline detection failed: {e}")
-        print("🔄 Falling back to image center cutoff")
+    if args.use_face_midline:
+        try:
+            # Use the mask to calculate midline (more reliable than MediaPipe)
+            cutoff_line = find_midline(img, mask=mask)
+            print(f"ℹ️ Using angled face midline from segmentation mask")
+        except Exception as e:
+            print(f"⚠️ Face midline detection failed: {e}")
+            print("🔄 Falling back to image center cutoff")
+            cutoff_x = int(args.cutoff_position * W)
+            print(f"ℹ️ Cutoff position: x = {cutoff_x} ({args.cutoff_position*100:.1f}% of image width)")
+    else:
         cutoff_x = int(args.cutoff_position * W)
         print(f"ℹ️ Cutoff position: x = {cutoff_x} ({args.cutoff_position*100:.1f}% of image width)")
     
@@ -953,7 +994,7 @@ def main():
             print(f"✅ Generated contour mesh: {len(contour_mesh_points)} nodes, {len(contour_mesh_triangles)} triangles")
 
         # Write only the two requested visualizations
-        draw_overlay_with_pde(cv2.imread(IMAGE_PATH), points, triangles, contour, solution, base_name, alpha=max(0.0, min(1.0, args.alpha)), cutoff_x=cutoff_x, cutoff_line=cutoff_line, separate_contour_mesh=args.separate_contour_mesh, contour_mesh_points=contour_mesh_points, contour_mesh_triangles=contour_mesh_triangles, show_mesh_nodes=args.show_mesh_nodes, show_voronoi=args.show_voronoi, hide_contour_outline=args.hide_contour_outline)
+        draw_overlay_with_pde(cv2.imread(IMAGE_PATH), points, triangles, contour, solution, base_name + cutoff_suffix, alpha=max(0.0, min(1.0, args.alpha)), cutoff_x=cutoff_x, cutoff_line=cutoff_line, separate_contour_mesh=args.separate_contour_mesh, contour_mesh_points=contour_mesh_points, contour_mesh_triangles=contour_mesh_triangles, show_mesh_nodes=args.show_mesh_nodes, show_voronoi=args.show_voronoi, hide_contour_outline=args.hide_contour_outline, colormap=selected_colormap)
 
         # Second visualization (solution on coarse mesh)
         coarse_points = points
@@ -962,7 +1003,7 @@ def main():
         overlay_on_image(
             img, coarse_points, coarse_triangles,
             solution=solution,
-            contour=contour, alpha=max(0.0, min(1.0, args.alpha)), mode="solution", base_name=base_name, cutoff_x=cutoff_x, cutoff_line=cutoff_line
+            contour=contour, alpha=max(0.0, min(1.0, args.alpha)), mode="solution", base_name=base_name + cutoff_suffix, cutoff_x=cutoff_x, cutoff_line=cutoff_line, colormap=selected_colormap
         )
     else:
         print("ℹ️ No contour generated (0% cutoff) - saving original image")
