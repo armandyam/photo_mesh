@@ -7,6 +7,7 @@ Extract a face contour from a photo, generate a 2D triangular mesh with Gmsh, an
 - **Angled face midline detection** - automatically calculates midline from segmentation mask that follows face orientation (works for tilted faces)
 - 2D mesh generation from the face contour (Gmsh)
 - Synthetic PDE visualization and image-colored mesh overlays
+- **Colormap selection** - choose from 22 different colormaps for face overlay visualization (default: PLASMA)
 - Clean input/output separation (`inputs/` → `output/`)
 
 ### Requirements
@@ -86,14 +87,23 @@ python main.py inputs/input_03.png --show-voronoi --alpha 0.6
 python main.py inputs/input_03.png --use-different-contour-mesh --alpha 0.6
 ```
 
+- Select colormap for face overlay (default: plasma):
+```bash
+python main.py inputs/input_03.png --colormap viridis --alpha 0.6
+python main.py inputs/input_03.png --colormap turbo --alpha 0.6
+python main.py inputs/input_03.png --colormap magma --alpha 0.6
+```
+
+Available colormaps: `autumn`, `bone`, `jet`, `winter`, `rainbow`, `ocean`, `summer`, `spring`, `cool`, `hsv`, `pink`, `hot`, `parula`, `magma`, `inferno`, `plasma`, `viridis`, `cividis`, `twilight`, `twilight_shifted`, `turbo`, `deepgreen`
+
 ### Examples
 
 <table>
   <thead>
     <tr>
       <th>Input</th>
-      <th>PDE contour overlay</th>
-      <th>Solution coarse mesh</th>
+      <th>Color overlay</th>
+      <th>Grayscale overlay</th>
     </tr>
   </thead>
   <tbody>
@@ -141,7 +151,7 @@ Notes:
 - **Angled midline calculation**: The midline is calculated from the segmentation mask itself by finding the center of mass at different vertical positions (forehead ~25%, nose ~50%, chin ~75%). This approach works reliably for both front-facing and tilted faces without requiring external landmark detection.
 - Mesh generation uses Gmsh (Python API) with Frontal-Delaunay for quality triangulation constrained to the face contour.
 - Only two images are written to `output/`: `<name>_overlay_color_alphaXX.png` and `<name>_overlay_gray_alphaXX.png`.
-- The visualization uses actual image colors mapped to the JET colormap (hot-to-cool) for meaningful data representation.
+- The visualization uses actual image colors mapped to a colormap (default: PLASMA) for meaningful data representation. The colormap can be customized using the `--colormap` argument.
 - The cutoff line is angled and follows the face orientation, ensuring proper segmentation even for tilted faces.
 
 ### Troubleshooting
